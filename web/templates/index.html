@@ -73,9 +73,18 @@
           <input type="number" step="0.25" name="timezone" value="1.0" class="w-full border rounded px-2 py-1 text-sm"/>
         </div>
       </div>
-      <div class="flex gap-2">
-        <button type="button" id="panchButton" class="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded py-2 font-medium">Panchangam</button>
-        <button type="button" id="chartButton" class="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded py-2 font-medium">Rasi Chart</button>
+      <div>
+        <label class="block text-sm text-slate-600 mb-1">Divisional Chart</label>
+        <select id="vargaSelect" class="w-full border rounded px-3 py-2 bg-white">
+          <option value="1">D-1 Rasi</option>
+          <option value="9" selected>D-9 Navamsa</option>
+        </select>
+      </div>
+      <div class="grid grid-cols-2 gap-2">
+        <button type="button" id="panchButton" class="bg-indigo-600 hover:bg-indigo-700 text-white rounded py-2 font-medium">Panchangam</button>
+        <button type="button" id="chartButton" class="bg-emerald-600 hover:bg-emerald-700 text-white rounded py-2 font-medium">Varga Chart</button>
+        <button type="button" id="bhavaButton" class="bg-amber-600 hover:bg-amber-700 text-white rounded py-2 font-medium">Bhava</button>
+        <button type="button" id="dashaButton" class="bg-rose-600 hover:bg-rose-700 text-white rounded py-2 font-medium">Vimshottari Dasha</button>
       </div>
       <p class="text-xs text-slate-400">Default: Koblenz, Germany</p>
     </form>
@@ -92,11 +101,53 @@
 
       <div id="chartOut" class="hidden bg-white rounded-lg shadow p-5">
         <div class="flex items-baseline justify-between border-b pb-2 mb-3">
-          <h2 class="font-semibold text-slate-700">Rasi Chart</h2>
+          <h2 id="chartTitle" class="font-semibold text-slate-700">Varga Chart</h2>
           <span id="chartSubject" class="text-xs text-slate-500"></span>
         </div>
         <p id="ascLine" class="text-sm text-slate-600 mb-3"></p>
         <div id="chartGrid" class="chakra grid grid-cols-4 grid-rows-4 gap-0 max-w-xl"></div>
+      </div>
+
+      <div id="bhavaOut" class="hidden bg-white rounded-lg shadow p-5">
+        <div class="flex items-baseline justify-between border-b pb-2 mb-3">
+          <h2 class="font-semibold text-slate-700">Bhava Chart</h2>
+          <span id="bhavaSubject" class="text-xs text-slate-500"></span>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="text-left text-slate-500 border-b">
+                <th class="py-2 pr-3">House</th>
+                <th class="py-2 pr-3">Start</th>
+                <th class="py-2 pr-3">Mid (Cusp)</th>
+                <th class="py-2 pr-3">End</th>
+                <th class="py-2">Occupants</th>
+              </tr>
+            </thead>
+            <tbody id="bhavaBody" class="divide-y divide-slate-100"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div id="dashaOut" class="hidden bg-white rounded-lg shadow p-5">
+        <div class="flex items-baseline justify-between border-b pb-2 mb-3">
+          <h2 class="font-semibold text-slate-700">Vimshottari Mahadasha</h2>
+          <span id="dashaSubject" class="text-xs text-slate-500"></span>
+        </div>
+        <p id="dashaBalance" class="text-sm text-slate-600 mb-3"></p>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="text-left text-slate-500 border-b">
+                <th class="py-2 pr-3">#</th>
+                <th class="py-2 pr-3">Lord</th>
+                <th class="py-2 pr-3">Start</th>
+                <th class="py-2">Duration (years)</th>
+              </tr>
+            </thead>
+            <tbody id="dashaBody" class="divide-y divide-slate-100"></tbody>
+          </table>
+        </div>
       </div>
 
       <div id="errOut" class="hidden bg-red-50 border border-red-300 text-red-700 rounded p-3 text-sm"></div>
@@ -176,11 +227,14 @@ async function loadPanchangam() {
   document.getElementById('panchOut').classList.remove('hidden');
 }
 
-async function loadChart() {
+async function loadVarga() {
   const fd = ensureForm(); if (!fd) return;
-  const r = await fetch('/api/chart', { method:'POST', body: fd });
+  const factor = document.getElementById('vargaSelect').value || '1';
+  fd.append('factor', factor);
+  const r = await fetch('/api/varga', { method:'POST', body: fd });
   if (!r.ok) { showErr('Chart failed: '+r.status); return; }
   const d = await r.json();
+  document.getElementById('chartTitle').textContent = d.label || ('D-'+d.factor);
   document.getElementById('chartSubject').textContent = subjectLine(fd);
   document.getElementById('ascLine').textContent =
     'Ascendant: ' + (d.ascendant_sign_name || '?');
@@ -226,8 +280,74 @@ function showErr(msg) {
   err.textContent = msg; err.classList.remove('hidden');
 }
 
+async function loadBhava() {
+  const fd = ensureForm(); if (!fd) return;
+  const r = await fetch('/api/bhava', { method:'POST', body: fd });
+  if (!r.ok) { showErr('Bhava failed: '+r.status); return; }
+  const d = await r.json();
+  document.getElementById('bhavaSubject').textContent = subjectLine(fd);
+  const tbody = document.getElementById('bhavaBody');
+  tbody.innerHTML = '';
+  d.houses.forEach(h => {
+    const tr = document.createElement('tr');
+    const occ = (h.planets||[]).join(', ') || '—';
+    const fmt = p => SIGN_GLYPH[p.sign_index] + ' ' + p.sign.replace(/[^A-Za-z]/g,'') + ' ' + p.deg;
+    tr.innerHTML =
+      '<td class="py-2 pr-3 font-medium text-slate-700">'+h.house+'</td>'+
+      '<td class="py-2 pr-3 text-slate-600">'+fmt(h.start)+'</td>'+
+      '<td class="py-2 pr-3 text-slate-800">'+fmt(h.mid)+'</td>'+
+      '<td class="py-2 pr-3 text-slate-600">'+fmt(h.end)+'</td>'+
+      '<td class="py-2 text-slate-700">'+occ+'</td>';
+    tbody.appendChild(tr);
+  });
+  document.getElementById('bhavaOut').classList.remove('hidden');
+}
+
+async function loadDasha() {
+  const fd = ensureForm(); if (!fd) return;
+  const r = await fetch('/api/dasha', { method:'POST', body: fd });
+  if (!r.ok) { showErr('Dasha failed: '+r.status); return; }
+  const d = await r.json();
+  document.getElementById('dashaSubject').textContent = subjectLine(fd);
+  const b = d.balance;
+  document.getElementById('dashaBalance').textContent =
+    'Balance at birth: ' + b.years + 'y ' + b.months + 'm ' + b.days + 'd (~' + b.total_years + ' years)';
+  const tbody = document.getElementById('dashaBody');
+  tbody.innerHTML = '';
+  d.periods.forEach((p, i) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML =
+      '<td class="py-2 pr-3 text-slate-400">'+(i+1)+'</td>'+
+      '<td class="py-2 pr-3 font-medium text-slate-800">'+p.lord+'</td>'+
+      '<td class="py-2 pr-3 text-slate-600">'+p.start+'</td>'+
+      '<td class="py-2 text-slate-700">'+p.duration_years+'</td>';
+    tbody.appendChild(tr);
+  });
+  document.getElementById('dashaOut').classList.remove('hidden');
+}
+
+async function populateVargaOptions() {
+  try {
+    const r = await fetch('/api/varga_list');
+    if (!r.ok) return;
+    const data = await r.json();
+    const sel = document.getElementById('vargaSelect');
+    sel.innerHTML = '';
+    data.factors.forEach(f => {
+      const opt = document.createElement('option');
+      opt.value = f.factor;
+      opt.textContent = f.label;
+      if (f.factor === 9) opt.selected = true;
+      sel.appendChild(opt);
+    });
+  } catch (_) { /* keep fallback options */ }
+}
+
 document.getElementById('panchButton').addEventListener('click', loadPanchangam);
-document.getElementById('chartButton').addEventListener('click', loadChart);
+document.getElementById('chartButton').addEventListener('click', loadVarga);
+document.getElementById('bhavaButton').addEventListener('click', loadBhava);
+document.getElementById('dashaButton').addEventListener('click', loadDasha);
+populateVargaOptions();
 
 // --- City autocomplete ---
 const cityInput = document.getElementById('cityInput');
