@@ -287,10 +287,24 @@
         <div id="lifeChartSvg" class="relative overflow-x-auto border border-slate-100 rounded">
           <div id="lifeChartTooltip" class="hidden absolute top-1 right-2 pointer-events-none bg-slate-800 text-white text-xs rounded px-2 py-1 shadow z-10"></div>
           <div id="lifeChartCursor" class="hidden absolute top-0 pointer-events-none border-l border-slate-500/60" style="height:100%"></div>
+          <div id="lifeChartPin" class="hidden absolute top-0 pointer-events-none" style="height:100%">
+            <div class="h-full border-l-2" style="border-color:#ef4444"></div>
+            <span class="absolute -top-px -translate-x-1/2 px-1.5 py-0.5 rounded text-[10px] font-semibold text-white shadow" style="background:#ef4444">●</span>
+          </div>
         </div>
         <p class="text-xs text-slate-400 mt-2">Click any bar to see the exact rules that produced its colour. Hover to preview.</p>
 
         <div id="lifeChartDetail" class="hidden mt-4 bg-slate-50 border border-slate-200 rounded p-3 text-sm"></div>
+
+        <div id="gocharaPanel" class="hidden mt-4 bg-white border border-slate-200 rounded p-4">
+          <div class="flex items-baseline justify-between border-b pb-2 mb-3 flex-wrap gap-2">
+            <h3 class="font-semibold text-slate-700">Gochara (transit chart)</h3>
+            <span id="gocharaSubject" class="text-xs text-slate-500"></span>
+          </div>
+          <p id="gocharaAscLine" class="text-sm text-slate-600 mb-3"></p>
+          <div id="gocharaGrid" class="chakra grid grid-cols-4 grid-rows-4 gap-0 max-w-xl"></div>
+          <p class="text-xs text-slate-400 mt-2">Planetary positions at the selected moment. Click any bar above to update.</p>
+        </div>
 
         <details class="mt-3 text-sm text-slate-600">
           <summary class="cursor-pointer font-medium text-slate-700">How this chart is scored</summary>
@@ -428,6 +442,37 @@ async function loadPanchangam() {
   document.getElementById('panchOut').classList.remove('hidden');
 }
 
+const CHAKRA_POSITIONS = [
+  // South-Indian 4x4 border positions for signs 0..11 (Aries..Pisces)
+  [0,1], [0,2], [0,3], [1,3],
+  [2,3], [3,3], [3,2], [3,1],
+  [3,0], [2,0], [1,0], [0,0],
+];
+
+function renderChakra(gridEl, houses, ascendant_sign) {
+  gridEl.innerHTML = '';
+  const cells = Array.from({length:16},()=>null);
+  houses.forEach((h, idx) => {
+    const [r,c] = CHAKRA_POSITIONS[idx];
+    cells[r*4+c] = h;
+  });
+  for (let i=0; i<16; i++) {
+    const cell = document.createElement('div');
+    cell.className = 'chakra-cell';
+    const h = cells[i];
+    if (!h) { cell.style.background='transparent'; cell.style.border='none'; gridEl.appendChild(cell); continue; }
+    const isAsc = h.sign_index === ascendant_sign;
+    if (isAsc) cell.classList.add('asc');
+    const planets = h.planets.map(p =>
+      '<span class="planet'+(p.is_asc?' asc-badge':'')+'">'+p.name+'</span>'
+    ).join('');
+    cell.innerHTML =
+      '<div class="text-slate-500">'+SIGN_GLYPH[h.sign_index]+' '+h.sign.replace(/[^A-Za-z]/g,'')+'</div>'+
+      '<div class="mt-1">'+planets+'</div>';
+    gridEl.appendChild(cell);
+  }
+}
+
 async function loadVarga() {
   const fd = ensureForm(); if (!fd) return;
   const factor = document.getElementById('vargaSelect').value || '1';
@@ -440,41 +485,32 @@ async function loadVarga() {
   document.getElementById('ascLine').textContent =
     'Ascendant: ' + (d.ascendant_sign_name || '?') +
     (d.ayanamsa ? '  ·  Ayanamsa: ' + d.ayanamsa : '');
-
-  const g = document.getElementById('chartGrid');
-  g.innerHTML = '';
-  // South-Indian style: signs are FIXED in a 4x4 border, clockwise from Aries at top
-  //   Pisces  | Aries  | Taurus | Gemini
-  //   Aquar.  |         inner       | Cancer
-  //   Capric. |         inner       | Leo
-  //   Sagit.  | Scorpio| Libra  | Virgo
-  // Positions (row,col) for signs 0..11 (Aries..Pisces):
-  const POSITIONS = [
-    [0,1], [0,2], [0,3], [1,3],  // 0 Aries, 1 Taurus, 2 Gemini, 3 Cancer
-    [2,3], [3,3], [3,2], [3,1],  // 4 Leo,   5 Virgo,  6 Libra,  7 Scorpio
-    [3,0], [2,0], [1,0], [0,0],  // 8 Sag,   9 Capric, 10 Aquar, 11 Pisces
-  ];
-  const cells = Array.from({length:16},()=>null);
-  d.houses.forEach((h, idx) => {
-    const [r,c] = POSITIONS[idx];
-    cells[r*4+c] = h;
-  });
-  for (let i=0; i<16; i++) {
-    const cell = document.createElement('div');
-    cell.className = 'chakra-cell';
-    const h = cells[i];
-    if (!h) { cell.style.background='transparent'; cell.style.border='none'; g.appendChild(cell); continue; }
-    const isAsc = h.sign_index === d.ascendant_sign;
-    if (isAsc) cell.classList.add('asc');
-    const planets = h.planets.map(p =>
-      '<span class="planet'+(p.is_asc?' asc-badge':'')+'">'+p.name+'</span>'
-    ).join('');
-    cell.innerHTML =
-      '<div class="text-slate-500">'+SIGN_GLYPH[h.sign_index]+' '+h.sign.replace(/[^A-Za-z]/g,'')+'</div>'+
-      '<div class="mt-1">'+planets+'</div>';
-    g.appendChild(cell);
-  }
+  renderChakra(document.getElementById('chartGrid'), d.houses, d.ascendant_sign);
   document.getElementById('chartOut').classList.remove('hidden');
+}
+
+async function loadGocharaAtDate(date, timeStr, dateLabel) {
+  const form = document.getElementById('form');
+  const base = new FormData(form);
+  // Substitute the *transit* date/time but keep birth place
+  const fd = new FormData();
+  fd.append('date', date);
+  fd.append('time', timeStr || '12:00');
+  fd.append('latitude', base.get('latitude') || '0');
+  fd.append('longitude', base.get('longitude') || '0');
+  fd.append('timezone', base.get('timezone') || '0');
+  fd.append('factor', '1');
+  const ay = base.get('ayanamsa') || 'LAHIRI';
+  fd.append('ayanamsa', ay);
+  const r = await fetch('/api/varga', { method:'POST', body: fd });
+  if (!r.ok) return;
+  const d = await r.json();
+  document.getElementById('gocharaSubject').textContent = dateLabel || date;
+  document.getElementById('gocharaAscLine').textContent =
+    'Transit ascendant: ' + (d.ascendant_sign_name || '?') +
+    (d.ayanamsa ? '  ·  Ayanamsa: ' + d.ayanamsa : '');
+  renderChakra(document.getElementById('gocharaGrid'), d.houses, d.ascendant_sign);
+  document.getElementById('gocharaPanel').classList.remove('hidden');
 }
 
 function showErr(msg) {
@@ -785,22 +821,42 @@ function showLifeDetailAtDay(dayOffset) {
   return true;
 }
 
-function positionLifeCursorAtDay(dayOffset, { scroll = false } = {}) {
+function pinLifeChartAt(dayOffset, { scroll = false } = {}) {
   const m = lifeChartSvgMeta();
   if (!m) return;
   const container = document.getElementById('lifeChartSvg');
-  const cur = document.getElementById('lifeChartCursor');
-  if (!cur) return;
+  const pin = document.getElementById('lifeChartPin');
+  if (!pin) return;
   const rect = m.svg.getBoundingClientRect();
   const z = rect.width / lifeChartState.svgBaseW;
   const svgX = m.leftPad + (dayOffset / m.totalDays) * m.plotW;
   const pxFromSvgLeft = svgX * z;
-  cur.style.left = pxFromSvgLeft + 'px';
-  cur.classList.remove('hidden');
+  pin.style.left = pxFromSvgLeft + 'px';
+  pin.classList.remove('hidden');
   if (scroll) {
     const containerW = container.clientWidth;
     container.scrollLeft = Math.max(0, pxFromSvgLeft - containerW / 2);
   }
+}
+
+function dayOffsetToDateParts(dayOffset) {
+  const m = lifeChartSvgMeta();
+  if (!m || !m.birthStr) return null;
+  const birth = new Date(m.birthStr + 'T00:00:00Z');
+  const at = new Date(birth.getTime() + dayOffset * 86400000);
+  const date = at.getUTCFullYear() + '-' +
+    String(at.getUTCMonth()+1).padStart(2,'0') + '-' +
+    String(at.getUTCDate()).padStart(2,'0');
+  const time = String(at.getUTCHours()).padStart(2,'0') + ':' +
+    String(at.getUTCMinutes()).padStart(2,'0');
+  return { date, time, label: date };
+}
+
+function updateLifeSelection(dayOffset, { scroll = false } = {}) {
+  showLifeDetailAtDay(dayOffset);
+  pinLifeChartAt(dayOffset, { scroll });
+  const parts = dayOffsetToDateParts(dayOffset);
+  if (parts) loadGocharaAtDate(parts.date, parts.time, parts.label).catch(() => {});
 }
 
 function openLifeChartToday() {
@@ -809,8 +865,7 @@ function openLifeChartToday() {
   const birth = new Date(m.birthStr + 'T00:00:00Z');
   const today = new Date();
   const dayOffset = Math.max(0, (today.getTime() - birth.getTime()) / 86400000);
-  showLifeDetailAtDay(dayOffset);
-  positionLifeCursorAtDay(dayOffset, { scroll: true });
+  updateLifeSelection(dayOffset, { scroll: true });
 }
 
 function lifeChartClick(e) {
@@ -822,8 +877,7 @@ function lifeChartClick(e) {
   let frac = (svgX - m.leftPad) / m.plotW;
   frac = Math.max(0, Math.min(1, frac));
   const dayOffset = frac * m.totalDays;
-  showLifeDetailAtDay(dayOffset);
-  positionLifeCursorAtDay(dayOffset);
+  updateLifeSelection(dayOffset);
 }
 
 function renderNatalSummary() {
@@ -938,6 +992,10 @@ async function loadLifeChart() {
     holder.innerHTML =
       '<div id="lifeChartTooltip" class="hidden absolute top-1 right-2 pointer-events-none bg-slate-800 text-white text-xs rounded px-2 py-1 shadow z-10"></div>' +
       '<div id="lifeChartCursor" class="hidden absolute top-0 pointer-events-none border-l border-slate-500/60" style="height:100%"></div>' +
+      '<div id="lifeChartPin" class="hidden absolute top-0 pointer-events-none" style="height:100%">' +
+        '<div class="h-full border-l-2" style="border-color:#ef4444"></div>' +
+        '<span class="absolute -top-px -translate-x-1/2 px-1.5 py-0.5 rounded text-[10px] font-semibold text-white shadow" style="background:#ef4444">●</span>' +
+      '</div>' +
       d.svg;
     lifeChartState.slices = d.slices || [];
     lifeChartState.sliceDays = d.slice_days || 30;
@@ -946,6 +1004,7 @@ async function loadLifeChart() {
     lifeChartState.natal = d.natal || null;
     renderNatalSummary();
     document.getElementById('lifeChartDetail').classList.add('hidden');
+    document.getElementById('gocharaPanel').classList.add('hidden');
     document.getElementById('lifeChartOut').classList.remove('hidden');
     applyLifeZoom();
     // Auto-open today's slice so the user sees the current period first
