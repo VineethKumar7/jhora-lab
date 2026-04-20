@@ -348,12 +348,13 @@ async def dasha(
 ):
     _apply_ayanamsa(ayanamsa)
     place, jd, _, _ = _make_place_and_jd(date, time, latitude, longitude, timezone)
-    level = max(1, min(int(level), 2))
+    level = max(1, min(int(level), 3))
     md_result = vimsottari.get_vimsottari_dhasa_bhukthi(jd, place, dhasa_level_index=1)
     balance = md_result[0]
     balance_years = balance[0] + balance[1] / 12.0 + balance[2] / 365.25
 
     ad_by_md = {}
+    pd_by_md_ad = {}
     if level >= 2:
         ad_result = vimsottari.get_vimsottari_dhasa_bhukthi(jd, place, dhasa_level_index=2)
         for entry in ad_result[1]:
@@ -364,6 +365,17 @@ async def dasha(
                 "lord_id": lords[1],
                 "start": _fmt_dasha_date(entry[1]),
                 "duration_years": round(entry[2], 4),
+            })
+    if level >= 3:
+        pd_result = vimsottari.get_vimsottari_dhasa_bhukthi(jd, place, dhasa_level_index=3)
+        for entry in pd_result[1]:
+            lords = entry[0]
+            key = (lords[0], lords[1])
+            pd_by_md_ad.setdefault(key, []).append({
+                "lord": _token_to_name(lords[2]),
+                "lord_id": lords[2],
+                "start": _fmt_dasha_date(entry[1]),
+                "duration_years": round(entry[2], 5),
             })
 
     periods = []
@@ -378,7 +390,11 @@ async def dasha(
             "duration_years": round(entry[2], 3),
         }
         if level >= 2:
-            row["antardashas"] = ad_by_md.get(md_lord, [])
+            ads = ad_by_md.get(md_lord, [])
+            if level >= 3:
+                for ad in ads:
+                    ad["pratyantardashas"] = pd_by_md_ad.get((md_lord, ad["lord_id"]), [])
+            row["antardashas"] = ads
         periods.append(row)
     return JSONResponse({
         "level": level,

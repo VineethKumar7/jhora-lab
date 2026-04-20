@@ -415,7 +415,7 @@ async function loadBhava() {
 
 async function loadDasha() {
   const fd = ensureForm(); if (!fd) return;
-  fd.set('level', '2');
+  fd.set('level', '3');
   const r = await fetch('/api/dasha', { method:'POST', body: fd });
   if (!r.ok) { showErr('Dasha failed: '+r.status); return; }
   const d = await r.json();
@@ -441,16 +441,35 @@ async function loadDasha() {
       childRow.className = 'hidden bg-slate-50';
       const td = document.createElement('td');
       td.colSpan = 4;
-      td.className = 'py-2 pl-8 pr-3';
-      let inner = '<div class="text-xs text-slate-500 mb-1">Antardasha (sub-periods)</div>'+
+      td.className = 'py-2 pl-6 pr-3';
+      let inner = '<div class="text-xs text-slate-500 mb-1">Antardasha — click a row to see Pratyantardasha</div>'+
         '<table class="w-full text-xs"><thead><tr class="text-left text-slate-400 border-b">'+
+        '<th class="py-1 pr-3 w-6"></th>'+
         '<th class="py-1 pr-3">#</th><th class="py-1 pr-3">Lord</th>'+
-        '<th class="py-1 pr-3">Start</th><th class="py-1">Duration (years)</th></tr></thead><tbody>';
+        '<th class="py-1 pr-3">Start</th><th class="py-1">Duration (years)</th></tr></thead><tbody id="adBody-'+i+'">';
       p.antardashas.forEach((ad, j) => {
-        inner += '<tr><td class="py-1 pr-3 text-slate-400">'+(j+1)+'</td>'+
+        const hasPD = Array.isArray(ad.pratyantardashas) && ad.pratyantardashas.length > 0;
+        const adCaret = hasPD ? '<span class="text-slate-400 pd-caret">▸</span>' : '';
+        inner += '<tr class="ad-row'+(hasPD ? ' cursor-pointer hover:bg-slate-100' : '')+'" data-md="'+i+'" data-ad="'+j+'">'+
+          '<td class="py-1 pr-3">'+adCaret+'</td>'+
+          '<td class="py-1 pr-3 text-slate-400">'+(j+1)+'</td>'+
           '<td class="py-1 pr-3 text-slate-700">'+ad.lord+'</td>'+
           '<td class="py-1 pr-3 text-slate-600">'+ad.start+'</td>'+
           '<td class="py-1 text-slate-700">'+ad.duration_years+'</td></tr>';
+        if (hasPD) {
+          inner += '<tr class="pd-group hidden" data-md="'+i+'" data-ad="'+j+'"><td></td><td colspan="4" class="py-1 pl-3 pr-3 bg-white">'+
+            '<div class="text-[11px] text-slate-400 mb-1">Pratyantardasha under '+p.lord+' / '+ad.lord+'</div>'+
+            '<table class="w-full text-[11px]"><thead><tr class="text-left text-slate-400 border-b">'+
+            '<th class="py-0.5 pr-3">#</th><th class="py-0.5 pr-3">Lord</th>'+
+            '<th class="py-0.5 pr-3">Start</th><th class="py-0.5">Duration (years)</th></tr></thead><tbody>';
+          ad.pratyantardashas.forEach((pd, k) => {
+            inner += '<tr><td class="py-0.5 pr-3 text-slate-400">'+(k+1)+'</td>'+
+              '<td class="py-0.5 pr-3 text-slate-700">'+pd.lord+'</td>'+
+              '<td class="py-0.5 pr-3 text-slate-600">'+pd.start+'</td>'+
+              '<td class="py-0.5 text-slate-700">'+pd.duration_years+'</td></tr>';
+          });
+          inner += '</tbody></table></td></tr>';
+        }
       });
       inner += '</tbody></table>';
       td.innerHTML = inner;
@@ -460,6 +479,18 @@ async function loadDasha() {
         childRow.classList.toggle('hidden');
         const c = mdRow.querySelector('.caret');
         if (c) c.textContent = childRow.classList.contains('hidden') ? '▶' : '▼';
+      });
+      childRow.querySelectorAll('tr.ad-row').forEach(tr => {
+        tr.addEventListener('click', (ev) => {
+          ev.stopPropagation();
+          const md = tr.dataset.md, ad = tr.dataset.ad;
+          const pdGroup = childRow.querySelector('tr.pd-group[data-md="'+md+'"][data-ad="'+ad+'"]');
+          if (pdGroup) {
+            pdGroup.classList.toggle('hidden');
+            const c = tr.querySelector('.pd-caret');
+            if (c) c.textContent = pdGroup.classList.contains('hidden') ? '▸' : '▾';
+          }
+        });
       });
     }
   });
