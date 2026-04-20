@@ -19,6 +19,7 @@ from typing import List, Tuple
 from jhora import const, utils
 from jhora.horoscope.chart import charts
 from jhora.horoscope.dhasa.graha import vimsottari
+from jhora.panchanga import drik
 
 
 SUN, MOON, MARS, MERCURY, JUPITER, VENUS, SATURN, RAHU, KETU = range(9)
@@ -34,6 +35,14 @@ BENEFICS = {JUPITER, VENUS, MERCURY, MOON}
 MALEFICS = {SUN, MARS, SATURN, RAHU, KETU}
 
 
+_SWE_PLANETS = {
+    SUN: const._SUN, MOON: const._MOON, MARS: const._MARS,
+    MERCURY: const._MERCURY, JUPITER: const._JUPITER,
+    VENUS: const._VENUS, SATURN: const._SATURN,
+    RAHU: const._RAHU, KETU: const._KETU,
+}
+
+
 def analyse_natal(jd: float, place) -> dict:
     """Return a dict describing house placement, lords, dignities for each planet."""
     rows = charts.rasi_chart(jd, place)
@@ -47,7 +56,23 @@ def analyse_natal(jd: float, place) -> dict:
         house = ((sign_idx - asc_sign) % 12) + 1
         planets[token] = {"sign": sign_idx, "long": deg, "house": house}
     house_lord = {h: SIGN_LORD[(asc_sign + h - 1) % 12] for h in range(1, 13)}
-    return {"asc_sign": asc_sign, "planets": planets, "house_lord": house_lord}
+    return {"asc_sign": asc_sign, "planets": planets, "house_lord": house_lord,
+            "moon_sign": planets.get(MOON, {}).get("sign", asc_sign)}
+
+
+def transit_signs(jd: float, place, planets=(JUPITER, SATURN, RAHU, KETU)) -> dict:
+    """Sidereal sign (0..11) of each planet at jd (local julian day)."""
+    jd_utc = jd - place.timezone
+    out = {}
+    for p in planets:
+        lon = drik.sidereal_longitude(jd_utc, _SWE_PLANETS[p])
+        out[p] = int(lon / 30) % 12
+    return out
+
+
+def _house_from(sign_from: int, target_sign: int) -> int:
+    """House number (1..12) counting from sign_from."""
+    return ((target_sign - sign_from) % 12) + 1
 
 
 def _dignity_bonus(natal: dict, planet: int) -> int:
@@ -209,6 +234,106 @@ def BAD_HOUSES_OCCUPANTS(natal: dict) -> set:
     return {p for p, v in natal["planets"].items() if v["house"] in BAD_HOUSES}
 
 
+SATURN_GOOD_FROM_MOON = {3, 6, 11}
+JUPITER_GOOD_FROM_MOON = {2, 5, 7, 9, 11}
+NODES_GOOD_FROM_MOON = {3, 6, 11}
+
+
+def score_marriage_transit(natal: dict, transit: dict) -> tuple:
+    """Return (score_delta, reasons) from transits. Layered on natal+dasha."""
+    score = 0
+    reasons = []
+    moon = natal["moon_sign"]
+    asc = natal["asc_sign"]
+    lord7 = natal["house_lord"][7]
+    lord7_sign = natal["planets"].get(lord7, {}).get("sign")
+    venus_sign = natal["planets"].get(VENUS, {}).get("sign")
+
+    jup = transit.get(JUPITER)
+    sat = transit.get(SATURN)
+    rahu = transit.get(RAHU)
+    ketu = transit.get(KETU)
+
+    if jup is not None:
+        if _house_from(moon, jup) in JUPITER_GOOD_FROM_MOON:
+            score += 1
+            reasons.append(f"Jupiter transit in {_house_from(moon, jup)}th from Moon (benefic gochara)")
+        if _house_from(asc, jup) == 7:
+            score += 1
+            reasons.append("Jupiter transiting 7th house")
+        if lord7_sign is not None and jup == lord7_sign:
+            score += 1
+            reasons.append("Jupiter transiting natal 7th lord")
+
+    if sat is not None:
+        if _house_from(asc, sat) == 7:
+            score -= 1
+            reasons.append("Saturn transiting 7th house (delays)")
+        if lord7_sign is not None and sat == lord7_sign:
+            score -= 1
+            reasons.append("Saturn transiting natal 7th lord")
+        sade_house = _house_from(moon, sat)
+        if sade_house in {12, 1, 2}:
+            score -= 1
+            reasons.append(f"Sade Sati (Saturn in {sade_house}th from Moon)")
+
+    for node, name in ((rahu, "Rahu"), (ketu, "Ketu")):
+        if node is None:
+            continue
+        if _house_from(asc, node) == 7:
+            score -= 1
+            reasons.append(f"{name} transiting 7th house")
+        if venus_sign is not None and node == venus_sign:
+            score -= 1
+            reasons.append(f"{name} conjunct natal Venus")
+
+    return score, reasons
+
+
+def score_career_transit(natal: dict, transit: dict) -> tuple:
+    score = 0
+    reasons = []
+    moon = natal["moon_sign"]
+    asc = natal["asc_sign"]
+    lord10 = natal["house_lord"][10]
+    lord10_sign = natal["planets"].get(lord10, {}).get("sign")
+
+    jup = transit.get(JUPITER)
+    sat = transit.get(SATURN)
+    rahu = transit.get(RAHU)
+
+    if jup is not None:
+        h_asc = _house_from(asc, jup)
+        if h_asc in {10, 11}:
+            score += 1
+            reasons.append(f"Jupiter transiting {h_asc}th (opportunity)")
+        if lord10_sign is not None and jup == lord10_sign:
+            score += 1
+            reasons.append("Jupiter transiting natal 10th lord")
+        if _house_from(moon, jup) in JUPITER_GOOD_FROM_MOON:
+            score += 0  # already counted for marriage; keep career neutral
+        else:
+            score -= 0
+
+    if sat is not None:
+        sat_moon = _house_from(moon, sat)
+        if sat_moon in SATURN_GOOD_FROM_MOON:
+            score += 1
+            reasons.append(f"Saturn transit in {sat_moon}th from Moon (favourable gochara)")
+        if sat_moon in {12, 1, 2}:
+            score -= 1
+            reasons.append(f"Sade Sati (Saturn in {sat_moon}th from Moon)")
+        if _house_from(asc, sat) == 10:
+            score += 0  # Saturn in 10th is mixed — pressure, eventual reward
+            reasons.append("Saturn transiting 10th (discipline / pressure)")
+
+    if rahu is not None and lord10_sign is not None and rahu == lord10_sign:
+        score -= 1
+        reasons.append("Rahu transiting natal 10th lord")
+
+    return score, reasons
+
+
 def _name(pid: int) -> str:
     return ["Sun", "Moon", "Mars", "Mercury", "Jupiter", "Venus", "Saturn", "Rahu", "Ketu"][pid]
 
@@ -236,25 +361,47 @@ def build_timeline(jd: float, place, years: int = 100, slice_days: int = 30) -> 
     slices = []
     end_jd = jd + years * 365.25
     cur = jd
-    explanations = {}
+    base_cache = {}  # (md, ad) -> natal+dasha score & reasons
+    explanations = {}  # keyed by signature including transit signature
     while cur < end_jd:
         md = _lord_at(md_ranges, cur, MOON)
         ad = _lord_at(ad_ranges, cur, md)
-        key = f"{md}_{ad}"
-        if key not in explanations:
-            m_score, m_reasons = score_marriage(natal, md, ad)
-            c_score, c_reasons = score_career(natal, md, ad)
-            explanations[key] = {
+        base_key = (md, ad)
+        if base_key not in base_cache:
+            m_base, m_base_r = score_marriage(natal, md, ad)
+            c_base, c_base_r = score_career(natal, md, ad)
+            base_cache[base_key] = (m_base, m_base_r, c_base, c_base_r)
+        m_base, m_base_r, c_base, c_base_r = base_cache[base_key]
+
+        t = transit_signs(cur, place)
+        t_sig = (t.get(JUPITER), t.get(SATURN), t.get(RAHU), t.get(KETU))
+        full_key = f"{md}_{ad}_{t_sig[0]}_{t_sig[1]}_{t_sig[2]}_{t_sig[3]}"
+
+        if full_key not in explanations:
+            m_t, m_t_r = score_marriage_transit(natal, t)
+            c_t, c_t_r = score_career_transit(natal, t)
+            m_total = max(-3, min(3, m_base + m_t))
+            c_total = max(-3, min(3, c_base + c_t))
+            explanations[full_key] = {
                 "md": md, "ad": ad,
                 "md_name": _name(md), "ad_name": _name(ad),
-                "marriage": m_score, "marriage_reasons": m_reasons,
-                "career": c_score, "career_reasons": c_reasons,
+                "marriage": m_total,
+                "marriage_reasons": m_base_r + m_t_r,
+                "career": c_total,
+                "career_reasons": c_base_r + c_t_r,
+                "transit": {
+                    "jupiter": t.get(JUPITER),
+                    "saturn": t.get(SATURN),
+                    "rahu": t.get(RAHU),
+                    "ketu": t.get(KETU),
+                },
             }
-        e = explanations[key]
+        e = explanations[full_key]
         slices.append({
             "jd": cur,
             "md": md,
             "ad": ad,
+            "key": full_key,
             "marriage": e["marriage"],
             "career": e["career"],
         })

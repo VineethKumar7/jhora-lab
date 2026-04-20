@@ -217,6 +217,14 @@
                 <li>Jupiter Mahadasha (Jupiter well placed) → +1</li>
                 <li>Antardasha of 7th lord → +1 · Venus Antardasha → +1</li>
               </ul>
+              <div class="font-semibold text-slate-700 mt-2 mb-1">Marriage transits (gochara)</div>
+              <ul class="list-disc pl-5 space-y-0.5 text-slate-600">
+                <li>Jupiter in 2/5/7/9/11 from Moon → +1</li>
+                <li>Jupiter transiting 7th house or 7th lord → +1</li>
+                <li>Saturn transiting 7th house or 7th lord → −1</li>
+                <li>Sade Sati (Saturn in 12/1/2 from Moon) → −1</li>
+                <li>Rahu/Ketu in 7th or over natal Venus → −1</li>
+              </ul>
             </div>
             <div>
               <div class="font-semibold text-slate-700 mb-1">Career rules</div>
@@ -232,6 +240,14 @@
                 <li>Mercury MD (well placed) → +1</li>
                 <li>MD in 6/8/12 → −1</li>
                 <li>Antardasha of 10th lord → +1</li>
+              </ul>
+              <div class="font-semibold text-slate-700 mt-2 mb-1">Career transits (gochara)</div>
+              <ul class="list-disc pl-5 space-y-0.5 text-slate-600">
+                <li>Saturn in 3/6/11 from Moon → +1 (favourable)</li>
+                <li>Jupiter transiting 10th or 11th house → +1</li>
+                <li>Jupiter transiting natal 10th lord → +1</li>
+                <li>Saturn transiting 10th → pressure / eventual reward (flagged, ±0)</li>
+                <li>Sade Sati → −1 · Rahu over 10th lord → −1</li>
               </ul>
             </div>
           </div>
@@ -511,8 +527,8 @@ function lifeChartClick(e) {
   const sliceIdx = Math.min(lifeChartState.slices.length - 1,
     Math.max(0, Math.floor(dayOffset / lifeChartState.sliceDays)));
   const s = lifeChartState.slices[sliceIdx] || [];
-  if (s.length < 2) return;
-  const key = s[0] + '_' + s[1];
+  if (s.length < 5) return;
+  const key = s[4];
   const ex = lifeChartState.explanations[key];
   const box = document.getElementById('lifeChartDetail');
   if (!ex) { box.classList.add('hidden'); return; }
@@ -604,13 +620,26 @@ function lifeChartMouseMove(e) {
     Math.max(0, Math.floor(dayOffset / lifeChartState.sliceDays)));
   const s = lifeChartState.slices[sliceIdx] || [];
   const L = lifeChartState.labels;
+  const SIGNS = ['Ari','Tau','Gem','Can','Leo','Vir','Lib','Sco','Sag','Cap','Aqu','Pis'];
   const md = s[0] != null ? L[s[0]] : '?';
   const ad = s[1] != null ? L[s[1]] : '?';
   const mScore = s[2] != null ? s[2] : 0;
   const cScore = s[3] != null ? s[3] : 0;
+  const key = s[4];
+  const ex = key ? lifeChartState.explanations[key] : null;
+  const tr = ex && ex.transit;
   const dateStr = formatDate(at);
+  let transitLine = '';
+  if (tr) {
+    const bits = [];
+    if (tr.jupiter != null) bits.push('Ju ' + SIGNS[tr.jupiter]);
+    if (tr.saturn != null) bits.push('Sa ' + SIGNS[tr.saturn]);
+    if (tr.rahu != null) bits.push('Ra ' + SIGNS[tr.rahu]);
+    transitLine = '<div class="opacity-80">' + bits.join(' · ') + '</div>';
+  }
   tip.innerHTML = `<div class="font-semibold">${dateStr} · age ${ageYears.toFixed(1)}</div>` +
                   `<div>MD: ${md} / AD: ${ad}</div>` +
+                  transitLine +
                   `<div>Marriage: ${mScore >= 0 ? '+' : ''}${mScore}  ·  Career: ${cScore >= 0 ? '+' : ''}${cScore}</div>`;
   tip.classList.remove('hidden');
   cur.style.left = (e.clientX - container.getBoundingClientRect().left + container.scrollLeft) + 'px';
