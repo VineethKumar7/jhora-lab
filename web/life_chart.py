@@ -516,11 +516,11 @@ def render_svg(timeline: dict, subject: str = "") -> str:
         jd_yr = utils.julian_day_number((yr, 1, 1), (0, 0, 0))
         x = x_for(jd_yr)
         parts.append(
-            f'<line x1="{x:.1f}" y1="{top_pad}" x2="{x:.1f}" '
+            f'<line class="yr-tick" x1="{x:.1f}" y1="{top_pad}" x2="{x:.1f}" '
             f'y2="{height - axis_h}" stroke="#e2e8f0" stroke-width="0.5"/>'
         )
         parts.append(
-            f'<text x="{x:.1f}" y="{height - 4}" text-anchor="middle" '
+            f'<text class="yr-tick" x="{x:.1f}" y="{height - 4}" text-anchor="middle" '
             f'fill="#64748b">{yr}</text>'
         )
 

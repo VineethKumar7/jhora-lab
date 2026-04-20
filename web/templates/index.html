@@ -50,6 +50,12 @@
   .dark .chakra-cell.asc { background: #422006; border-color: #d97706; }
   .dark #lifeChartDetail { background: #0f172a; border-color: #334155; color: #e2e8f0; }
   .dark #lifeChartSvg { background: #0f172a; }
+  #lifeChartSvg svg .yr-tick { display: none; }
+  #lifeTicks { position: absolute; left: 0; top: 0; height: 100%; pointer-events: none; z-index: 2; }
+  #lifeTicks .tk { position: absolute; top: 0; height: 100%; width: 0; border-left: 1px solid #e2e8f0; }
+  #lifeTicks .tk .lbl { position: absolute; bottom: 0; transform: translateX(-50%); font-size: 11px; color: #64748b; background: rgba(255,255,255,0.85); padding: 0 3px; white-space: nowrap; line-height: 14px; }
+  .dark #lifeTicks .tk { border-left-color: #334155; }
+  .dark #lifeTicks .tk .lbl { color: #cbd5e1; background: rgba(15,23,42,0.85); }
   .dark #lifeChartSvg svg text { fill: #cbd5e1 !important; }
   .dark #lifeChartSvg svg rect[fill="#f5f5f4"] { fill: #1f2937 !important; }
   .dark #lifeChartSvg svg line[stroke="#e2e8f0"] { stroke: #334155 !important; }
@@ -286,6 +292,7 @@
           <span class="text-slate-400">· scroll horizontally to pan</span>
         </div>
         <div id="lifeChartSvg" class="relative overflow-x-auto border border-slate-100 rounded">
+          <div id="lifeTicks"></div>
           <div id="lifeChartTooltip" class="hidden absolute top-1 right-2 pointer-events-none bg-slate-800 text-white text-xs rounded px-2 py-1 shadow z-10"></div>
           <div id="lifeChartCursor" class="hidden absolute top-0 pointer-events-none border-l border-slate-500/60" style="height:100%"></div>
           <div id="lifeChartPin" class="hidden absolute top-0 pointer-events-none" style="height:100%">
@@ -903,17 +910,134 @@ function renderNatalSummary() {
     '</div>';
 }
 
+let lifeChartXStretch = 1;
+
 function applyLifeZoom() {
   const z = parseFloat(document.getElementById('lifeZoom').value) || 1;
   document.getElementById('lifeZoomVal').textContent = z.toFixed(2).replace(/\.?0+$/, '') + '×';
+  applyLifeTransforms(z, lifeChartXStretch);
+}
+
+function applyLifeTransforms(z, xs) {
   const svg = document.querySelector('#lifeChartSvg svg');
   if (!svg) return;
   const vb = (svg.getAttribute('viewBox') || '0 0 1000 156').split(/\s+/).map(Number);
   const baseW = vb[2] || 1000, baseH = vb[3] || 156;
   lifeChartState.svgBaseW = baseW;
-  svg.setAttribute('width', Math.round(baseW * z));
+  const needStretch = Math.abs(xs - 1) > 0.001;
+  svg.setAttribute('preserveAspectRatio', needStretch ? 'none' : 'xMidYMid meet');
+  svg.setAttribute('width', Math.round(baseW * z * xs));
   svg.setAttribute('height', Math.round(baseH * z));
   svg.style.display = 'block';
+  renderLifeTicks();
+}
+
+function pickTickGranularity(pxPerDay) {
+  const pxPerYear = pxPerDay * 365.25;
+  const pxPerMonth = pxPerDay * 30.44;
+  if (pxPerDay >= 40) return { unit: 'day', step: 1 };
+  if (pxPerDay >= 12) return { unit: 'day', step: 7 };
+  if (pxPerMonth >= 60) return { unit: 'month', step: 1 };
+  if (pxPerMonth >= 30) return { unit: 'month', step: 3 };
+  if (pxPerMonth >= 15) return { unit: 'month', step: 6 };
+  if (pxPerYear >= 40) return { unit: 'year', step: 1 };
+  if (pxPerYear >= 18) return { unit: 'year', step: 5 };
+  return { unit: 'year', step: 10 };
+}
+
+function formatTickLabel(d, unit) {
+  const MON = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const y = d.getUTCFullYear();
+  const m = d.getUTCMonth();
+  const dd = d.getUTCDate();
+  if (unit === 'year') return String(y);
+  if (unit === 'month') return MON[m] + ' ' + String(y).slice(2);
+  return MON[m] + ' ' + dd;
+}
+
+function renderLifeTicks() {
+  const m = lifeChartSvgMeta();
+  const host = document.getElementById('lifeTicks');
+  if (!host) return;
+  if (!m || !m.birthStr) { host.innerHTML = ''; return; }
+  const svgRect = m.svg.getBoundingClientRect();
+  const actualW = m.svg.clientWidth || svgRect.width || 1000;
+  const actualH = m.svg.clientHeight || svgRect.height || 156;
+  const scaleX = actualW / lifeChartState.svgBaseW;
+  const plotPxW = m.plotW * scaleX;
+  const pxPerDay = plotPxW / m.totalDays;
+  const gran = pickTickGranularity(pxPerDay);
+  const birth = new Date(m.birthStr + 'T00:00:00Z');
+  const endMs = birth.getTime() + m.totalDays * 86400000;
+
+  host.style.width = actualW + 'px';
+  host.style.height = actualH + 'px';
+  host.innerHTML = '';
+
+  const ticks = [];
+  if (gran.unit === 'year') {
+    let y = birth.getUTCFullYear();
+    y = Math.ceil(y / gran.step) * gran.step;
+    while (true) {
+      const d = new Date(Date.UTC(y, 0, 1));
+      if (d.getTime() > endMs) break;
+      if (d.getTime() >= birth.getTime()) ticks.push(d);
+      y += gran.step;
+    }
+  } else if (gran.unit === 'month') {
+    let y = birth.getUTCFullYear();
+    let mo = birth.getUTCMonth();
+    mo = Math.ceil(mo / gran.step) * gran.step;
+    while (true) {
+      const d = new Date(Date.UTC(y, mo, 1));
+      if (d.getTime() > endMs) break;
+      if (d.getTime() >= birth.getTime()) ticks.push(d);
+      mo += gran.step;
+      if (mo >= 12) { y += Math.floor(mo / 12); mo = mo % 12; }
+    }
+  } else {
+    const stepMs = gran.step * 86400000;
+    let t = birth.getTime();
+    // align to midnight (already UTC 00:00)
+    while (t <= endMs) {
+      ticks.push(new Date(t));
+      t += stepMs;
+    }
+  }
+
+  const frag = document.createDocumentFragment();
+  for (const d of ticks) {
+    const dayOff = (d.getTime() - birth.getTime()) / 86400000;
+    const svgX = m.leftPad + (dayOff / m.totalDays) * m.plotW;
+    const px = svgX * scaleX;
+    const tk = document.createElement('div');
+    tk.className = 'tk';
+    tk.style.left = px + 'px';
+    const lbl = document.createElement('span');
+    lbl.className = 'lbl';
+    lbl.textContent = formatTickLabel(d, gran.unit);
+    tk.appendChild(lbl);
+    frag.appendChild(tk);
+  }
+  host.appendChild(frag);
+}
+
+function lifeChartWheel(e) {
+  if (!e.deltaY) return;
+  e.preventDefault();
+  const container = document.getElementById('lifeChartSvg');
+  const anchorPx = e.clientX - container.getBoundingClientRect().left + container.scrollLeft;
+  const prevWidth = (document.querySelector('#lifeChartSvg svg') || {}).clientWidth || 1;
+  const anchorFrac = anchorPx / prevWidth;
+  const factor = e.deltaY > 0 ? 0.9 : 1.1;
+  lifeChartXStretch = Math.max(0.3, Math.min(12, lifeChartXStretch * factor));
+  const z = parseFloat(document.getElementById('lifeZoom').value) || 1;
+  applyLifeTransforms(z, lifeChartXStretch);
+  const newSvg = document.querySelector('#lifeChartSvg svg');
+  if (newSvg) {
+    const newWidth = newSvg.clientWidth;
+    container.scrollLeft = Math.max(0, anchorFrac * newWidth - (e.clientX - container.getBoundingClientRect().left));
+  }
 }
 
 function formatDate(d) {
@@ -991,6 +1115,7 @@ async function loadLifeChart() {
     document.getElementById('lifeChartSubject').textContent = subjectLine(fd);
     const holder = document.getElementById('lifeChartSvg');
     holder.innerHTML =
+      '<div id="lifeTicks"></div>' +
       '<div id="lifeChartTooltip" class="hidden absolute top-1 right-2 pointer-events-none bg-slate-800 text-white text-xs rounded px-2 py-1 shadow z-10"></div>' +
       '<div id="lifeChartCursor" class="hidden absolute top-0 pointer-events-none border-l border-slate-500/60" style="height:100%"></div>' +
       '<div id="lifeChartPin" class="hidden absolute top-0 pointer-events-none" style="height:100%">' +
@@ -1030,6 +1155,7 @@ document.getElementById('lifeZoomOut').addEventListener('click', () => {
 document.getElementById('lifeChartSvg').addEventListener('mousemove', lifeChartMouseMove);
 document.getElementById('lifeChartSvg').addEventListener('mouseleave', lifeChartMouseLeave);
 document.getElementById('lifeChartSvg').addEventListener('click', lifeChartClick);
+document.getElementById('lifeChartSvg').addEventListener('wheel', lifeChartWheel, { passive: false });
 document.getElementById('lifeChartSvg').style.cursor = 'crosshair';
 document.getElementById('lifeNowButton').addEventListener('click', openLifeChartToday);
 populateVargaOptions();
