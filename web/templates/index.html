@@ -36,8 +36,8 @@
           <select id="profileSelect" class="flex-1 border rounded px-2 py-1 text-sm bg-white">
             <option value="">— load profile —</option>
           </select>
-          <button type="button" id="profileSave" class="bg-slate-700 hover:bg-slate-800 text-white rounded px-3 py-1 text-sm">Save As</button>
-          <button type="button" id="profileDelete" class="bg-red-500 hover:bg-red-600 text-white rounded px-3 py-1 text-sm" title="Delete selected profile">✕</button>
+          <button type="button" id="profileSave" class="bg-slate-700 hover:bg-slate-800 text-white rounded px-3 py-1 text-sm">Save</button>
+          <button type="button" id="profileDelete" class="bg-red-500 hover:bg-red-600 text-white rounded px-3 py-1 text-sm" title="Delete selected profile">Delete</button>
         </div>
         <p id="autosaveStatus" class="text-[11px] text-slate-400 mt-1">Autosaved</p>
       </div>
@@ -531,6 +531,8 @@ async function onProfileSelect() {
   const d = await r.json();
   applyProfile(d.profile);
   scheduleAutosave();
+  // Auto-render chart + panchangam for the selected profile
+  await Promise.all([loadVarga(), loadPanchangam()]);
 }
 
 async function onProfileSaveAs() {
