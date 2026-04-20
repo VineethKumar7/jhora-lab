@@ -175,7 +175,7 @@
           <h2 class="font-semibold text-slate-700">Life Chart</h2>
           <span id="lifeChartSubject" class="text-xs text-slate-500"></span>
         </div>
-        <div class="flex items-center gap-4 text-xs text-slate-500 mb-2">
+        <div class="flex flex-wrap items-center gap-4 text-xs text-slate-500 mb-2">
           <span>Legend:</span>
           <span class="inline-flex items-center gap-1"><span class="inline-block w-3 h-3 rounded" style="background:#16a34a"></span>Very good</span>
           <span class="inline-flex items-center gap-1"><span class="inline-block w-3 h-3 rounded" style="background:#86efac"></span>Good</span>
@@ -183,7 +183,15 @@
           <span class="inline-flex items-center gap-1"><span class="inline-block w-3 h-3 rounded" style="background:#fca5a5"></span>Difficult</span>
           <span class="inline-flex items-center gap-1"><span class="inline-block w-3 h-3 rounded" style="background:#dc2626"></span>Very difficult</span>
         </div>
-        <div id="lifeChartSvg" class="overflow-x-auto"></div>
+        <div class="flex items-center gap-3 text-xs text-slate-600 mb-2">
+          <label for="lifeZoom">Zoom</label>
+          <button type="button" id="lifeZoomOut" class="px-2 py-0.5 bg-slate-100 hover:bg-slate-200 rounded">−</button>
+          <input id="lifeZoom" type="range" min="1" max="8" step="0.25" value="2.5" class="w-48">
+          <button type="button" id="lifeZoomIn" class="px-2 py-0.5 bg-slate-100 hover:bg-slate-200 rounded">+</button>
+          <span id="lifeZoomVal" class="text-slate-400">2.5×</span>
+          <span class="text-slate-400">· scroll horizontally to pan</span>
+        </div>
+        <div id="lifeChartSvg" class="overflow-x-auto border border-slate-100 rounded"></div>
         <p class="text-xs text-slate-400 mt-3">Simplified rule engine (~25 rules), inspired by VedAstro. Dasha-based colouring at 30-day resolution.</p>
       </div>
 
@@ -435,6 +443,20 @@ document.getElementById('bhavaButton').addEventListener('click', loadBhava);
 document.getElementById('dashaButton').addEventListener('click', loadDasha);
 document.getElementById('lifeChartButton').addEventListener('click', loadLifeChart);
 
+function applyLifeZoom() {
+  const z = parseFloat(document.getElementById('lifeZoom').value) || 1;
+  document.getElementById('lifeZoomVal').textContent = z.toFixed(2).replace(/\.?0+$/, '') + '×';
+  const svg = document.querySelector('#lifeChartSvg svg');
+  if (!svg) return;
+  const vb = (svg.getAttribute('viewBox') || '0 0 1000 156').split(/\s+/).map(Number);
+  const baseW = vb[2] || 1000, baseH = vb[3] || 156;
+  const w = Math.round(baseW * z);
+  const h = Math.round(baseH * z);
+  svg.setAttribute('width', w);
+  svg.setAttribute('height', h);
+  svg.style.display = 'block';
+}
+
 async function loadLifeChart() {
   const fd = ensureForm(); if (!fd) return;
   const btn = document.getElementById('lifeChartButton');
@@ -448,11 +470,24 @@ async function loadLifeChart() {
     document.getElementById('lifeChartSubject').textContent = subjectLine(fd);
     document.getElementById('lifeChartSvg').innerHTML = d.svg;
     document.getElementById('lifeChartOut').classList.remove('hidden');
+    applyLifeZoom();
   } finally {
     btn.disabled = false;
     btn.textContent = oldLabel;
   }
 }
+
+document.getElementById('lifeZoom').addEventListener('input', applyLifeZoom);
+document.getElementById('lifeZoomIn').addEventListener('click', () => {
+  const s = document.getElementById('lifeZoom');
+  s.value = Math.min(parseFloat(s.max), parseFloat(s.value) + parseFloat(s.step));
+  applyLifeZoom();
+});
+document.getElementById('lifeZoomOut').addEventListener('click', () => {
+  const s = document.getElementById('lifeZoom');
+  s.value = Math.max(parseFloat(s.min), parseFloat(s.value) - parseFloat(s.step));
+  applyLifeZoom();
+});
 populateVargaOptions();
 populateAyanamsaOptions();
 
