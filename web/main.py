@@ -21,6 +21,7 @@ from jhora.horoscope.chart import charts  # noqa: E402
 from jhora.horoscope.dhasa.graha import vimsottari  # noqa: E402
 
 from web import db  # noqa: E402
+from web import life_chart  # noqa: E402
 
 utils.get_resource_lists()
 db.init_db()
@@ -389,6 +390,28 @@ async def dasha(
         },
         "periods": periods,
     })
+
+
+@app.post("/api/life_chart")
+async def life_chart_endpoint(
+    date: str = Form(...),
+    time: str = Form(...),
+    latitude: float = Form(...),
+    longitude: float = Form(...),
+    timezone: float = Form(...),
+    years: int = Form(100),
+    slice_days: int = Form(30),
+    ayanamsa: Optional[str] = Form(None),
+    name: Optional[str] = Form(None),
+):
+    _apply_ayanamsa(ayanamsa)
+    place, jd, _, _ = _make_place_and_jd(date, time, latitude, longitude, timezone)
+    years = max(10, min(int(years), 120))
+    slice_days = max(7, min(int(slice_days), 90))
+    timeline = life_chart.build_timeline(jd, place, years=years, slice_days=slice_days)
+    subject = f"{name or 'Subject'} · {date} {time}"
+    svg = life_chart.render_svg(timeline, subject=subject)
+    return JSONResponse({"svg": svg, "slices": len(timeline["slices"])})
 
 
 @app.get("/api/autosave")
