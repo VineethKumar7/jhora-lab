@@ -482,17 +482,48 @@ function applyProfile(p) {
   }
 }
 
+function isValidBirthDate(s) {
+  if (!s) return false;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
+  const [y, m, d] = s.split('-').map(Number);
+  if (y < 1800 || y > 2200) return false;
+  if (m < 1 || m > 12) return false;
+  if (d < 1 || d > 31) return false;
+  const dt = new Date(s + 'T00:00:00');
+  return dt.getFullYear() === y && dt.getMonth()+1 === m && dt.getDate() === d;
+}
+
+function isValidTime(s) {
+  if (!s) return true;  // time defaults are OK
+  return /^\d{2}:\d{2}(:\d{2})?$/.test(s);
+}
+
+function formValidationIssue() {
+  const dateEl = document.querySelector('input[name=date]');
+  const timeEl = document.querySelector('input[name=time]');
+  if (dateEl.value && !isValidBirthDate(dateEl.value)) return 'invalid date';
+  if (timeEl.value && !isValidTime(timeEl.value)) return 'invalid time';
+  return null;
+}
+
 let autosaveTimer = null;
 function scheduleAutosave() {
   clearTimeout(autosaveTimer);
   const status = document.getElementById('autosaveStatus');
+  const issue = formValidationIssue();
+  if (issue) {
+    status.textContent = 'Not saved — ' + issue;
+    return;
+  }
   status.textContent = 'Saving…';
   autosaveTimer = setTimeout(async () => {
+    const issueLate = formValidationIssue();
+    if (issueLate) { status.textContent = 'Not saved — ' + issueLate; return; }
     try {
       await fetch('/api/autosave', { method:'POST', body: collectForm() });
       status.textContent = 'Autosaved · ' + new Date().toLocaleTimeString();
     } catch(_) { status.textContent = 'Autosave failed'; }
-  }, 500);
+  }, 800);
 }
 
 async function loadAutosave() {
@@ -536,6 +567,8 @@ async function onProfileSelect() {
 }
 
 async function onProfileSaveAs() {
+  const issue = formValidationIssue();
+  if (issue) { showErr('Cannot save profile — ' + issue + '. Fix the form first.'); return; }
   const label = prompt('Save profile as (e.g. "Vineeth — birth"):');
   if (!label) return;
   const fd = collectForm();
