@@ -50,10 +50,24 @@ TRIKONA_HOUSES = {1, 5, 9}
 DUSTHANA_HOUSES = {6, 8, 12}
 UPACHAYA_HOUSES = {3, 6, 10, 11}
 
+SIGN_NAMES = ["Aries", "Taurus", "Gemini", "Cancer", "Leo", "Virgo",
+              "Libra", "Scorpio", "Sagittarius", "Capricorn", "Aquarius", "Pisces"]
+
+_ORDINAL = {1: "1st", 2: "2nd", 3: "3rd", 4: "4th", 5: "5th", 6: "6th",
+            7: "7th", 8: "8th", 9: "9th", 10: "10th", 11: "11th", 12: "12th"}
+
 
 def aspected_signs(planet: int, from_sign: int) -> set:
     """Signs aspected by `planet` when placed in `from_sign` (full drishti only)."""
     return {(from_sign + (h - 1)) % 12 for h in SPECIAL_ASPECTS[planet]}
+
+
+def _aspect_number(planet: int, from_sign: int, target_sign: int) -> int:
+    """Which of the planet's special aspects (1..12) hits target, or 0 if none."""
+    if target_sign not in aspected_signs(planet, from_sign):
+        return 0
+    n = ((target_sign - from_sign) % 12) + 1
+    return n if n in SPECIAL_ASPECTS[planet] else 0
 
 
 def planets_aspecting_sign(natal: dict, target_sign: int) -> set:
@@ -239,7 +253,7 @@ def _natal_layer(natal: dict, topic_house: int, karaka: int) -> Tuple[float, Lis
         if contrib:
             raw += contrib
             reasons.append(
-                f"{_name(lord)} ({topic_house}th lord) in {lord_info['house']}th"
+                f"{_name(lord)} ({_ORDINAL[topic_house]} lord) in {_ORDINAL[lord_info['house']]}"
                 f" [{nature[lord][0]} ×{mult:+.1f}, {contrib:+.1f}]"
             )
 
@@ -251,7 +265,7 @@ def _natal_layer(natal: dict, topic_house: int, karaka: int) -> Tuple[float, Lis
         if contrib:
             raw += contrib
             reasons.append(
-                f"{_name(karaka)} (karaka) in {karaka_info['house']}th"
+                f"{_name(karaka)} (karaka) in {_ORDINAL[karaka_info['house']]}"
                 f" [{nature[karaka][0]} ×{mult:+.1f}, {contrib:+.1f}]"
             )
 
@@ -262,7 +276,13 @@ def _natal_layer(natal: dict, topic_house: int, karaka: int) -> Tuple[float, Lis
             continue
         contrib = 0.5 * mult
         raw += contrib
-        reasons.append(f"{_name(p)} aspects {topic_house}th [{contrib:+.1f}]")
+        p_info = planets[p]
+        aspn = _aspect_number(p, p_info["sign"], topic_sign)
+        reasons.append(
+            f"{_name(p)} in {_ORDINAL[p_info['house']]} ({SIGN_NAMES[p_info['sign']]}) "
+            f"aspects {_ORDINAL[topic_house]} ({SIGN_NAMES[topic_sign]}) via {_ORDINAL[aspn]} drishti "
+            f"[{contrib:+.1f}]"
+        )
 
     # Aspects received by karaka's sign
     if karaka_info:
@@ -275,8 +295,12 @@ def _natal_layer(natal: dict, topic_house: int, karaka: int) -> Tuple[float, Lis
                 continue
             contrib = 0.3 * mult
             raw += contrib
+            p_info = planets[p]
+            aspn = _aspect_number(p, p_info["sign"], k_sign)
             reasons.append(
-                f"{_name(p)} aspects {_name(karaka)} (karaka) [{contrib:+.1f}]"
+                f"{_name(p)} in {_ORDINAL[p_info['house']]} ({SIGN_NAMES[p_info['sign']]}) "
+                f"aspects {_name(karaka)} karaka in {_ORDINAL[karaka_info['house']]} "
+                f"({SIGN_NAMES[k_sign]}) via {_ORDINAL[aspn]} drishti [{contrib:+.1f}]"
             )
 
     return _clamp(raw, -3.0, 3.0), reasons
@@ -307,14 +331,14 @@ def _dasa_layer(
         note = []
         if p == topic_lord:
             amp += 2.5 if base >= 0 else -2.5
-            note.append(f"= {topic_house}th lord")
+            note.append(f"= {_ORDINAL[topic_house]} lord")
         if p == karaka:
             amp += 1.5 if base >= 0 else -1.5
             note.append("= karaka")
         total = base + amp
         suffix = f" [{', '.join(note)}]" if note else ""
         return total, (
-            f"{_name(p)} in {info['house']}th "
+            f"{_name(p)} in {_ORDINAL[info['house']]} "
             f"[{nature[p][0]} ×{mult:+.1f}, base {base:+.1f}{suffix}]"
         )
 
@@ -409,31 +433,50 @@ def _transit_topic_score(
         if mult == 0:
             continue
         hit_signs = aspected_signs(p, t_sign) | {t_sign}  # include conjunction
+        t_house = _house_from(asc, t_sign)  # transit planet's house from asc
+
+        def _aspect_detail(target_sign: int) -> str:
+            if target_sign == t_sign:
+                return "conjunction"
+            n = _aspect_number(p, t_sign, target_sign)
+            return f"{_ORDINAL[n]} drishti" if n else "aspect"
 
         if topic_sign_asc in hit_signs:
             contrib = 0.6 * mult
             raw += contrib
             reasons.append(
-                f"Transit {_name(p)} aspects {topic_house}th from asc [{contrib:+.1f}]"
+                f"Transit {_name(p)} in {_ORDINAL[t_house]} ({SIGN_NAMES[t_sign]}) "
+                f"{_aspect_detail(topic_sign_asc)} "
+                f"{_ORDINAL[topic_house]} ({SIGN_NAMES[topic_sign_asc]}) from asc [{contrib:+.1f}]"
             )
         if topic_sign_moon in hit_signs:
             contrib = 0.4 * mult
             raw += contrib
+            moon_h = _house_from(moon, t_sign)
             reasons.append(
-                f"Transit {_name(p)} aspects {topic_house}th from Moon [{contrib:+.1f}]"
+                f"Transit {_name(p)} in {_ORDINAL[moon_h]} from Moon ({SIGN_NAMES[t_sign]}) "
+                f"{_aspect_detail(topic_sign_moon)} "
+                f"{_ORDINAL[topic_house]} from Moon ({SIGN_NAMES[topic_sign_moon]}) [{contrib:+.1f}]"
             )
         if karaka_sign is not None and karaka_sign in hit_signs:
             contrib = 0.4 * mult
             raw += contrib
             reasons.append(
-                f"Transit {_name(p)} aspects natal {_name(karaka)} [{contrib:+.1f}]"
+                f"Transit {_name(p)} in {_ORDINAL[t_house]} ({SIGN_NAMES[t_sign]}) "
+                f"{_aspect_detail(karaka_sign)} "
+                f"natal {_name(karaka)} in {_ORDINAL[karaka_info['house']]} "
+                f"({SIGN_NAMES[karaka_sign]}) [{contrib:+.1f}]"
             )
 
     # Named bonuses — Sade Sati (Saturn in 12/1/2 from Moon) preserved.
     sat = transit.get(SATURN)
     if sat is not None and _house_from(moon, sat) in {12, 1, 2}:
+        sade_h = _house_from(moon, sat)
         raw -= 0.5
-        reasons.append(f"Sade Sati (Saturn in {_house_from(moon, sat)}th from Moon) [-0.5]")
+        reasons.append(
+            f"Sade Sati — Saturn in {SIGN_NAMES[sat]} "
+            f"({_ORDINAL[sade_h]} from natal Moon) [-0.5]"
+        )
 
     return _clamp(raw, -3.0, 3.0), reasons
 
