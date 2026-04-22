@@ -82,6 +82,9 @@
   .dark .text-rose-800 { color: #fda4af; }
   .dark .bg-yellow-50 { background: #1c1917; }
   .dark .border-yellow-200 { border-color: #78350f; }
+  .dark .bg-emerald-50 { background: #022c22; color: #d1fae5; }
+  .dark .border-emerald-200 { border-color: #047857; }
+  .dark .text-emerald-800 { color: #a7f3d0; }
 </style>
 </head>
 <body class="bg-slate-50 min-h-screen text-slate-800">
@@ -247,6 +250,8 @@
         </div>
         <p id="ascLine" class="text-sm text-slate-600 mb-3"></p>
         <div id="chartGrid" class="chakra grid grid-cols-4 grid-rows-4 gap-0 max-w-xl"></div>
+        <div id="constitutionCard" class="mt-5 rounded border border-emerald-200 bg-emerald-50 p-4 text-sm hidden"></div>
+        <div id="constitutionCitations" class="mt-2 text-xs text-slate-500 italic"></div>
       </div>
 
       <div id="bhavaOut" class="hidden bg-white rounded-lg shadow p-5">
@@ -992,7 +997,115 @@ async function loadVarga() {
     'Ascendant: ' + (d.ascendant_sign_name || '?') +
     (d.ayanamsa ? '  ·  Ayanamsa: ' + d.ayanamsa : '');
   renderChakra(document.getElementById('chartGrid'), d.houses, d.ascendant_sign);
+  _renderConstitutionCard(d, String(factor) === '1');
   document.getElementById('chartOut').classList.remove('hidden');
+}
+
+// ---------- Native Constitution card (Ch 2) ----------
+function _renderConstitutionCard(d, isRasiChart) {
+  const card = document.getElementById('constitutionCard');
+  const cite = document.getElementById('constitutionCitations');
+  if (!card || !cite) return;
+  if (!isRasiChart) { card.classList.add('hidden'); cite.innerHTML = ''; return; }
+
+  const lagna = _cleanRasiName(d.ascendant_sign_name);
+  let sun = null, moon = null;
+  const planetsByRasi = {};
+  (d.houses || []).forEach(h => {
+    const signClean = _cleanRasiName(h.sign);
+    (h.planets || []).forEach(p => {
+      const nm = (p.name || '').toLowerCase();
+      if (nm === 'sun')  sun  = signClean;
+      if (nm === 'moon') moon = signClean;
+      if (!p.is_asc && nm !== 'rahu' && nm !== 'ketu' && nm !== 'pluto' && nm !== 'uranus' && nm !== 'neptune') {
+        (planetsByRasi[signClean] = planetsByRasi[signClean] || []).push(p.name);
+      }
+    });
+  });
+
+  const lagnaInfo = RASI_INFO[lagna];
+  const moonInfo  = RASI_INFO[moon];
+  const sunInfo   = RASI_INFO[sun];
+  if (!lagnaInfo || !moonInfo || !sunInfo) {
+    card.classList.add('hidden');
+    cite.innerHTML = '';
+    return;
+  }
+
+  // Ayurvedic dosha blend — from Lagna (body), Moon (mind), Sun (spirit)
+  const doshaCount = { pitta: 0, vaata: 0, kapha: 0, mixed: 0 };
+  [lagnaInfo, moonInfo, sunInfo].forEach(r => { doshaCount[r.dosha] = (doshaCount[r.dosha] || 0) + 1; });
+  const doshaLabel = Object.entries(doshaCount).filter(([,n]) => n > 0)
+    .sort((a,b) => b[1] - a[1])
+    .map(([k,n]) => k + (n > 1 ? ' ×'+n : ''))
+    .join(' + ');
+
+  const varnaBlend = [lagnaInfo.varna, moonInfo.varna, sunInfo.varna]
+    .reduce((acc, v) => (acc.includes(v) ? acc : acc.concat([v])), []).join(' / ');
+  const directions = [lagnaInfo.direction, moonInfo.direction, sunInfo.direction]
+    .reduce((acc, v) => (acc.includes(v) ? acc : acc.concat([v])), []).join(' / ');
+
+  // Day/night born strength — Sun sign's dayNight preference vs actual chart time is computed on backend;
+  // here we classify Lagna as divā/nishā rasi per Ch 2.2.10.
+  const lagnaIsDay = lagnaInfo.dayNight === 'day';
+
+  // Rising mode of the lagna rasi (Ch 2.2.11) — note: rising mode is a property of the rasi,
+  // applied to any planet sitting in it (first-half vs second-half dasa fruits).
+  const risingLine =
+    'Lagna is a <em>' + lagnaInfo.rising + '</em> rasi — any planet placed here delivers its dasa fruits in the ' +
+    (lagnaInfo.rising === 'seershodaya' ? 'first half' : lagnaInfo.rising === 'prishthodaya' ? 'second half' : 'both halves (Pisces rises with both head and feet)');
+
+  // Elements/guna balance from actual planetary placements
+  const elementTally = { fire: 0, earth: 0, air: 0, water: 0 };
+  const gunaTally    = { saattwik: 0, raajasik: 0, taamasik: 0 };
+  Object.entries(planetsByRasi).forEach(([rasi, planets]) => {
+    const info = RASI_INFO[rasi]; if (!info) return;
+    planets.forEach(() => {
+      elementTally[info.element] = (elementTally[info.element] || 0) + 1;
+      gunaTally[info.guna] = (gunaTally[info.guna] || 0) + 1;
+    });
+  });
+  const totalPlanets = Object.values(elementTally).reduce((a,b) => a+b, 0) || 1;
+  const pct = n => Math.round(n / totalPlanets * 100);
+  const topElem = Object.entries(elementTally).sort((a,b) => b[1]-a[1])[0];
+  const topGuna = Object.entries(gunaTally).sort((a,b) => b[1]-a[1])[0];
+
+  const bar = (label, val, total, color) => {
+    const p = total > 0 ? Math.round(val / total * 100) : 0;
+    return '<div class="text-xs mb-1"><span class="inline-block w-16">'+label+'</span>' +
+      '<span class="inline-block w-64 h-2 bg-slate-200 rounded align-middle overflow-hidden"><span class="block h-full ' + color + '" style="width:'+p+'%"></span></span>' +
+      '<span class="ml-2 text-slate-600">'+val+' ('+p+'%)</span></div>';
+  };
+
+  card.classList.remove('hidden');
+  card.innerHTML =
+    '<div class="text-emerald-800 font-semibold mb-2">Native constitution (Ch 2)</div>' +
+    '<div class="grid md:grid-cols-2 gap-4">' +
+      '<div>' +
+        '<div class="mb-2"><span class="text-xs text-slate-500">Lagna</span> <strong>'+lagna+'</strong> · <em class="text-xs">'+lagnaInfo.element+' / '+lagnaInfo.modality+' / '+lagnaInfo.guna+'</em></div>' +
+        '<div class="mb-2"><span class="text-xs text-slate-500">Moon</span> <strong>'+moon+'</strong> · <em class="text-xs">'+moonInfo.element+' / '+moonInfo.modality+' / '+moonInfo.guna+'</em></div>' +
+        '<div class="mb-2"><span class="text-xs text-slate-500">Sun</span> <strong>'+sun+'</strong> · <em class="text-xs">'+sunInfo.element+' / '+sunInfo.modality+' / '+sunInfo.guna+'</em></div>' +
+        '<div class="mt-3 text-xs"><strong>Ayurvedic blend:</strong> '+doshaLabel+' (Ch 2.2.6)</div>' +
+        '<div class="text-xs"><strong>Varna blend:</strong> '+varnaBlend+' (Ch 2.2.12)</div>' +
+        '<div class="text-xs"><strong>Favourable directions:</strong> '+directions+' (Ch 2.2.8)</div>' +
+        '<div class="text-xs mt-1"><strong>Lagna '+(lagnaIsDay ? 'divā' : 'nishā')+' rasi</strong> — you’re configured to draw strength in ' + (lagnaIsDay ? 'the day' : 'the night') + ' (Ch 2.2.10)</div>' +
+        '<div class="text-xs mt-1">'+risingLine+' (Ch 2.2.11)</div>' +
+      '</div>' +
+      '<div>' +
+        '<div class="text-xs text-slate-600 mb-1">Element balance <span class="text-slate-400">(of '+totalPlanets+' placements)</span></div>' +
+        bar('fire',  elementTally.fire,  totalPlanets, 'bg-orange-400') +
+        bar('earth', elementTally.earth, totalPlanets, 'bg-lime-500') +
+        bar('air',   elementTally.air,   totalPlanets, 'bg-sky-400') +
+        bar('water', elementTally.water, totalPlanets, 'bg-blue-500') +
+        '<div class="text-xs text-slate-600 mt-3 mb-1">Guna balance</div>' +
+        bar('sattva',  gunaTally.saattwik, totalPlanets, 'bg-amber-400') +
+        bar('rajas',   gunaTally.raajasik, totalPlanets, 'bg-rose-400') +
+        bar('tamas',   gunaTally.taamasik, totalPlanets, 'bg-slate-500') +
+        '<div class="text-xs mt-3"><strong>Signature:</strong> ' + topElem[0] + '-dominant, ' + topGuna[0] + '-dominant (Ch 2.2.5 / 2.2.7)</div>' +
+      '</div>' +
+    '</div>';
+
+  cite.innerHTML = 'Sources — Ch 2.2.5 (elements), Ch 2.2.6 (doshas), Ch 2.2.7 (gunas), Ch 2.2.8 (directions), Ch 2.2.10 (divā/nishā), Ch 2.2.11 (rising), Ch 2.2.12 (varna). Body = Lagna, Mind = Moon, Spirit = Sun — classical triplicity used throughout Vol 1.';
 }
 
 async function loadGocharaAtDate(date, timeStr, dateLabel) {
