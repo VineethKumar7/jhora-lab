@@ -222,6 +222,11 @@
               <option value="1" selected>D-1 Rasi</option>
               <option value="9">D-9 Navamsa</option>
             </select>
+            <div class="inline-flex border border-slate-300 rounded overflow-hidden ml-2" role="group" aria-label="Chart style">
+              <button type="button" class="style-btn px-2 py-1 text-xs bg-indigo-600 text-white" data-style="south">South</button>
+              <button type="button" class="style-btn px-2 py-1 text-xs bg-white text-slate-700 hover:bg-slate-100 border-l border-slate-300" data-style="north">North</button>
+              <button type="button" class="style-btn px-2 py-1 text-xs bg-white text-slate-700 hover:bg-slate-100 border-l border-slate-300" data-style="east">East</button>
+            </div>
           </div>
           <span id="chartSubject" class="text-xs text-slate-500"></span>
         </div>
@@ -511,7 +516,8 @@ const CHAKRA_POSITIONS = [
   [3,0], [2,0], [1,0], [0,0],
 ];
 
-function renderChakra(gridEl, houses, ascendant_sign) {
+function renderChakraSouth(gridEl, houses, ascendant_sign) {
+  gridEl.className = 'chakra grid grid-cols-4 grid-rows-4 gap-0 max-w-xl';
   gridEl.innerHTML = '';
   const cells = Array.from({length:16},()=>null);
   houses.forEach((h, idx) => {
@@ -533,6 +539,201 @@ function renderChakra(gridEl, houses, ascendant_sign) {
       '<div class="mt-1">'+planets+'</div>';
     gridEl.appendChild(cell);
   }
+}
+
+// North-Indian diamond: 12 regions (4 corner triangles + 4 inner rhombi + 4 inner triangles)
+// in a 100x100 square. Vertices: A(0,0) B(100,0) C(100,100) D(0,100);
+// midpoints N(50,0) E(100,50) S(50,100) W(0,50); center O(50,50);
+// inner diamond mids: TR(75,25) BR(75,75) BL(25,75) TL(25,25).
+// House polygons (bhava-based: 1 = top rhombus, anti-clockwise for 2..12):
+const NORTH_POLYS = [
+  // 1: top rhombus
+  [[50,0],[75,25],[50,50],[25,25]],
+  // 2: top-left outer triangle (A-N-W → anti-clockwise of H1)
+  [[0,0],[50,0],[0,50]],
+  // 3: inner tri W-O-TL
+  [[0,50],[50,50],[25,25]],
+  // 4: left rhombus
+  [[0,50],[25,25],[50,50],[25,75]],
+  // 5: inner tri W-O-BL
+  [[0,50],[50,50],[25,75]],
+  // 6: bottom-left outer triangle (D-W-S)
+  [[0,100],[0,50],[50,100]],
+  // 7: bottom rhombus
+  [[50,100],[25,75],[50,50],[75,75]],
+  // 8: inner tri S-O-BR
+  [[50,100],[50,50],[75,75]],
+  // 9: bottom-right outer triangle (C-S-E)
+  [[100,100],[50,100],[100,50]],
+  // 10: right rhombus
+  [[100,50],[75,75],[50,50],[75,25]],
+  // 11: inner tri E-O-TR
+  [[100,50],[50,50],[75,25]],
+  // 12: top-right outer triangle (B-N-E)
+  [[100,0],[100,50],[50,0]],
+];
+
+// Polygon centroid for label placement.
+function _polyCentroid(pts) {
+  let cx = 0, cy = 0;
+  pts.forEach(([x,y]) => { cx += x; cy += y; });
+  return [cx / pts.length, cy / pts.length];
+}
+
+function renderChakraNorth(gridEl, houses, ascendant_sign) {
+  gridEl.className = 'chakra max-w-xl';
+  gridEl.innerHTML = '';
+  if (ascendant_sign == null) ascendant_sign = 0;
+  // Build bhava-ordered list: index 0 = H1 (asc house), 1 = H2, ...
+  // `houses` is in sign order (0..11 = Ar..Pi). Rotate to bhava order.
+  const bhavas = [];
+  for (let i = 0; i < 12; i++) {
+    const signIdx = (ascendant_sign + i) % 12;
+    bhavas.push(houses.find(h => h.sign_index === signIdx));
+  }
+  const size = 500;
+  const svgNs = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(svgNs, 'svg');
+  svg.setAttribute('viewBox', '0 0 100 100');
+  svg.setAttribute('width', size);
+  svg.setAttribute('height', size);
+  svg.setAttribute('style', 'max-width:100%;height:auto;background:#fafaf9;border:1px solid #d1d5db');
+  // Draw outer square
+  const rect = document.createElementNS(svgNs, 'rect');
+  rect.setAttribute('x', 0); rect.setAttribute('y', 0);
+  rect.setAttribute('width', 100); rect.setAttribute('height', 100);
+  rect.setAttribute('fill', 'none'); rect.setAttribute('stroke', '#94a3b8');
+  rect.setAttribute('stroke-width', 0.4);
+  svg.appendChild(rect);
+  // Draw diagonals + inner diamond
+  const lines = [
+    [0,0,100,100], [100,0,0,100],                    // diagonals
+    [50,0,100,50], [100,50,50,100], [50,100,0,50], [0,50,50,0], // inner diamond edges
+  ];
+  lines.forEach(([x1,y1,x2,y2]) => {
+    const ln = document.createElementNS(svgNs, 'line');
+    ln.setAttribute('x1',x1); ln.setAttribute('y1',y1);
+    ln.setAttribute('x2',x2); ln.setAttribute('y2',y2);
+    ln.setAttribute('stroke','#94a3b8'); ln.setAttribute('stroke-width',0.3);
+    svg.appendChild(ln);
+  });
+  // Fill asc house with amber tint, add text labels
+  NORTH_POLYS.forEach((poly, idx) => {
+    const h = bhavas[idx];
+    if (!h) return;
+    const isAsc = idx === 0; // first bhava = ascendant
+    const poly_el = document.createElementNS(svgNs, 'polygon');
+    poly_el.setAttribute('points', poly.map(p => p.join(',')).join(' '));
+    poly_el.setAttribute('fill', isAsc ? '#fef3c7' : 'transparent');
+    poly_el.setAttribute('stroke', 'none');
+    svg.appendChild(poly_el);
+    const [cx, cy] = _polyCentroid(poly);
+    // Sign + house number
+    const sign_t = document.createElementNS(svgNs, 'text');
+    sign_t.setAttribute('x', cx); sign_t.setAttribute('y', cy - 1.8);
+    sign_t.setAttribute('text-anchor', 'middle');
+    sign_t.setAttribute('font-size', '3');
+    sign_t.setAttribute('fill', '#64748b');
+    sign_t.textContent = SIGN_GLYPH[h.sign_index] + ' ' + h.sign.replace(/[^A-Za-z]/g,'').slice(0,3);
+    svg.appendChild(sign_t);
+    // Planets
+    const planetsLine = h.planets.map(p => p.name).join(' ');
+    if (planetsLine) {
+      const pl_t = document.createElementNS(svgNs, 'text');
+      pl_t.setAttribute('x', cx); pl_t.setAttribute('y', cy + 2.2);
+      pl_t.setAttribute('text-anchor', 'middle');
+      pl_t.setAttribute('font-size', '2.5');
+      pl_t.setAttribute('font-weight', '600');
+      pl_t.setAttribute('fill', isAsc ? '#b45309' : '#1e293b');
+      pl_t.textContent = planetsLine;
+      svg.appendChild(pl_t);
+    }
+    // House number
+    const hn_t = document.createElementNS(svgNs, 'text');
+    hn_t.setAttribute('x', cx); hn_t.setAttribute('y', cy + 5.5);
+    hn_t.setAttribute('text-anchor', 'middle');
+    hn_t.setAttribute('font-size', '2');
+    hn_t.setAttribute('fill', '#94a3b8');
+    hn_t.textContent = 'H' + (idx + 1);
+    svg.appendChild(hn_t);
+  });
+  gridEl.appendChild(svg);
+}
+
+// East-Indian style: rasi-based 4x4 with signs arranged counter-clockwise.
+// Common East-Indian variant: Pi top-right, moving anti-clockwise (matches "Sun chart").
+const EAST_POSITIONS = [
+  // sign 0..11 -> [row, col] on a 4x4 grid
+  [3,3], [3,2], [3,1], [3,0],    // Ar Ta Ge Cn along bottom (right→left)
+  [2,0], [1,0], [0,0], [0,1],    // Le Vi Li Sc along left, turning top
+  [0,2], [0,3], [1,3], [2,3],    // Sg Cp Aq Pi along top and right
+];
+
+function renderChakraEast(gridEl, houses, ascendant_sign) {
+  gridEl.className = 'chakra grid grid-cols-4 grid-rows-4 gap-0 max-w-xl';
+  gridEl.innerHTML = '';
+  const cells = Array.from({length:16},()=>null);
+  houses.forEach((h, idx) => {
+    const [r,c] = EAST_POSITIONS[idx];
+    cells[r*4+c] = h;
+  });
+  for (let i=0; i<16; i++) {
+    const cell = document.createElement('div');
+    cell.className = 'chakra-cell';
+    const h = cells[i];
+    if (!h) { cell.style.background='transparent'; cell.style.border='none'; gridEl.appendChild(cell); continue; }
+    const isAsc = h.sign_index === ascendant_sign;
+    if (isAsc) cell.classList.add('asc');
+    const planets = h.planets.map(p =>
+      '<span class="planet'+(p.is_asc?' asc-badge':'')+'">'+p.name+'</span>'
+    ).join('');
+    cell.innerHTML =
+      '<div class="text-slate-500">'+SIGN_GLYPH[h.sign_index]+' '+h.sign.replace(/[^A-Za-z]/g,'')+'</div>'+
+      '<div class="mt-1">'+planets+'</div>';
+    gridEl.appendChild(cell);
+  }
+}
+
+let chartStyle = localStorage.getItem('chartStyle') || 'south';
+
+function renderChakra(gridEl, houses, ascendant_sign) {
+  if (chartStyle === 'north') return renderChakraNorth(gridEl, houses, ascendant_sign);
+  if (chartStyle === 'east')  return renderChakraEast(gridEl, houses, ascendant_sign);
+  return renderChakraSouth(gridEl, houses, ascendant_sign);
+}
+
+function _initChartStyleButtons() {
+  document.querySelectorAll('.style-btn').forEach(b => {
+    if (b.dataset.bound) return;
+    b.dataset.bound = '1';
+    b.addEventListener('click', () => {
+      chartStyle = b.dataset.style;
+      localStorage.setItem('chartStyle', chartStyle);
+      document.querySelectorAll('.style-btn').forEach(x => {
+        const on = x.dataset.style === chartStyle;
+        x.classList.toggle('bg-indigo-600', on);
+        x.classList.toggle('text-white', on);
+        x.classList.toggle('bg-white', !on);
+        x.classList.toggle('text-slate-700', !on);
+      });
+      // Re-render current chart + gochara chart if visible
+      if (activeTab() && activeTab().id === 'chartButton') reloadActiveTab();
+      if (!document.getElementById('gocharaPanel').classList.contains('hidden')) {
+        const subj = document.getElementById('gocharaSubject').textContent;
+        // trigger re-fetch of current gochara via last-selected detail
+        const pin = lifeChartState.selectedDayOffset;
+        if (pin != null) showLifeDetailAtDay(pin);
+      }
+    });
+  });
+  // Initial active state
+  document.querySelectorAll('.style-btn').forEach(x => {
+    const on = x.dataset.style === chartStyle;
+    x.classList.toggle('bg-indigo-600', on);
+    x.classList.toggle('text-white', on);
+    x.classList.toggle('bg-white', !on);
+    x.classList.toggle('text-slate-700', !on);
+  });
 }
 
 async function loadVarga() {
@@ -953,6 +1154,8 @@ TABS.forEach(t => {
     try { await t.loader(); } catch (e) { console.error(e); }
   });
 });
+
+_initChartStyleButtons();
 
 // Nav-bar copies mirror the form selects (and reload when changed)
 bindSelectSync('vargaSelect', 'vargaNav', () => {
