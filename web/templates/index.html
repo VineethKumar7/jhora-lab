@@ -501,6 +501,12 @@
           <div id="tithiSummary" class="text-sm space-y-2"></div>
         </div>
         <div id="tithiStrip" class="mb-3"></div>
+        <details class="mt-5 border-t pt-3" open>
+          <summary class="font-semibold text-slate-700 cursor-pointer">About Tithi &amp; Paksha <span class="text-xs text-slate-400 font-normal">(from the book)</span></summary>
+          <div id="tithiAbout" class="text-sm text-slate-600 space-y-2 mt-2"></div>
+        </details>
+        <div id="tithiReading" class="mt-4 rounded border border-indigo-200 bg-indigo-50 p-4 text-sm"></div>
+        <div id="tithiCitations" class="mt-2 text-xs text-slate-500 italic"></div>
       </div>
 
       <div id="yogaOut" class="hidden bg-white rounded-lg shadow p-5">
@@ -1193,6 +1199,68 @@ function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 
+// Planet significations drawn from Ch 3 (Planets). Each short line cites its
+// source so the UI can show "Sun → self/father/authority (Ch 3.2.3)".
+const PLANET_THEMES = {
+  Sun:     { governs: "soul",                    cabinet: "king",      varna: "Kshatriya",  guna: "saattwik", benefic: "natural malefic (mild)", themes: "self, father, authority, vitality, leadership" },
+  Moon:    { governs: "mind",                    cabinet: "king",      varna: "Vaisya",     guna: "saattwik", benefic: "benefic when waxing, malefic when waning", themes: "mother, emotions, public, fluids, comfort" },
+  Mars:    { governs: "strength",                cabinet: "army chief",varna: "Kshatriya",  guna: "taamasik", benefic: "natural malefic",        themes: "siblings, courage, land, accidents, surgery" },
+  Mercury: { governs: "speech",                  cabinet: "prince",    varna: "Vaisya",     guna: "raajasik", benefic: "context-dependent",      themes: "intellect, communication, trade, learning" },
+  Jupiter: { governs: "knowledge & happiness",   cabinet: "minister",  varna: "Brahmana",   guna: "saattwik", benefic: "natural benefic",        themes: "wisdom, children, wealth, dharma" },
+  Venus:   { governs: "potency",                 cabinet: "minister",  varna: "Brahmana",   guna: "raajasik", benefic: "natural benefic",        themes: "spouse, pleasure, arts, vehicles, comfort" },
+  Saturn:  { governs: "grief",                   cabinet: "servant",   varna: "Sudra",      guna: "taamasik", benefic: "natural malefic",        themes: "longevity, discipline, hardship, sorrow, endings" },
+  Rahu:    { governs: "obsession, foreign",      cabinet: "army",                                              benefic: "natural malefic",        themes: "unconventional gains, foreign matters, deception" },
+  Ketu:    { governs: "moksha, detachment",      cabinet: "army",                                              benefic: "natural malefic",        themes: "spirituality, isolation, loss, liberation" },
+};
+
+// Tithi classical quality (muhurta tradition — Ch 36.3).
+const TITHI_QUALITY = (() => {
+  const m = {};
+  [1, 6, 11, 16, 21, 26].forEach(n => m[n] = { name: "Nanda", blurb: "joyful — favoured for celebration and new beginnings" });
+  [2, 7, 12, 17, 22, 27].forEach(n => m[n] = { name: "Bhadra", blurb: "auspicious — suited to everyday auspicious acts" });
+  [3, 8, 13, 18, 23, 28].forEach(n => m[n] = { name: "Jaya",  blurb: "victory — suited to competition and decisive work" });
+  [4, 9, 14, 19, 24, 29].forEach(n => m[n] = { name: "Rikta", blurb: "“empty” — classically avoided for auspicious starts" });
+  [5, 10, 15, 20, 25].forEach(n => m[n] = { name: "Purna", blurb: "full, substantial — suited to completions" });
+  m[30] = { name: "Amavasya", blurb: "new moon — introspective, intense; generally avoided for auspicious starts" };
+  return m;
+})();
+
+// Nakshatra deity → short thematic hint (classical tradition, matches
+// Ch 1 Table 2 deities). Used by Lookup / Hora / Maasa tabs.
+const DEITY_HINTS = {
+  "Aswini Kumara": "twin horseback healer-gods — healing, quick action",
+  "Yama": "lord of death and dharma — limits, endings, justice",
+  "Agni": "fire — transformation, purification, ritual",
+  "Brahma": "creator — generation, genesis, authority",
+  "Moon": "mind, fluids, nurture",
+  "Shiva": "destroyer-renewer — dissolution and rebirth",
+  "Aditi": "mother of gods — nurture, abundance",
+  "Jupiter": "wisdom, expansion",
+  "Rahu": "obsession, foreign matters",
+  "Sun": "soul, self, authority",
+  "Aryaman": "god of contracts/union — partnerships",
+  "Viswakarma": "divine architect — craft, skill",
+  "Vaayu": "wind — movement, travel",
+  "Indra": "lord of gods — power, rulership",
+  "Mitra": "friendship, civic order",
+  "Nirriti": "dissolution, exile",
+  "Varuna": "cosmic waters, truth, oaths",
+  "Viswadeva": "universal gods — pluralism, collective",
+  "Vishnu": "preserver — sustenance, duty",
+  "Vasu": "abundance, resources",
+  "Ajacharana": "serpent of the deep — inner power",
+  "Ahirbudhanya": "serpent of the foundations — depth",
+  "Pooshan": "nourisher, guide on journeys",
+};
+
+function _planetLine(name) {
+  const p = PLANET_THEMES[name];
+  if (!p) return escapeHtml(name);
+  return '<strong>' + escapeHtml(name) + '</strong> governs ' + p.governs +
+         ' (Ch 3.2.3); ' + (p.benefic || '') +
+         '. Themes: <em>' + p.themes + '</em>.';
+}
+
 async function runLookup(q) {
   const errBox = document.getElementById('lookupErr');
   const resBox = document.getElementById('lookupResult');
@@ -1558,6 +1626,69 @@ async function loadTithi() {
     '<div class="grid grid-cols-15 gap-1" style="grid-template-columns:repeat(15,minmax(0,1fr))">' +
     d.all_tithis.slice(15).map(t => _tithiCell(t)).join('') +
     '</div>';
+
+  _renderTithiBook(d);
+}
+
+// Book-sourced explainer for the Tithi tab. Reads Ch 1.3.8 for the definition,
+// Ch 3.2.3 for the tithi-lord planet's significations, and Ch 36.3 for the
+// classical Nanda/Bhadra/Jaya/Rikta/Purna quality of the tithi.
+function _renderTithiBook(d) {
+  const aboutEl = document.getElementById('tithiAbout');
+  const readingEl = document.getElementById('tithiReading');
+  const citeEl = document.getElementById('tithiCitations');
+  if (!aboutEl || !readingEl || !citeEl) return;
+
+  aboutEl.innerHTML =
+    '<p>A <strong>tithi</strong> is a <em>12°</em> slice of the Moon’s separation from the Sun. ' +
+    'When Moon and Sun are conjunct (0°), tithi 1 begins; when they are opposite (180°), tithi 15 ' +
+    '(full moon) completes. Thirty tithis make one lunar month.</p>' +
+    '<p><strong>Paksha</strong> splits the month in two: tithis 1–15 form ' +
+    '<span class="font-semibold text-amber-700">Sukla Paksha</span> (waxing — the Moon grows from new to full), ' +
+    'tithis 16–30 form <span class="font-semibold text-slate-700">Krishna Paksha</span> ' +
+    '(waning — the Moon shrinks from full to the next new moon). ' +
+    'The tithi also carries a <em>lord</em>: a fixed 8-planet cycle (Sun, Moon, Mars, Mercury, Jupiter, Venus, Saturn, Rahu) ' +
+    'repeats across the 30 tithis — so the lord of tithi N is planet ((N−1) mod 8).</p>' +
+    '<p class="text-xs text-slate-500">Source: Ch 1.3.8 (Tithis &amp; Pakshas), Ch 1.3.8.1 (Tithi lords), Ch 1.3.8.2 (Pakshas).</p>';
+
+  const q = TITHI_QUALITY[d.tithi_number] || { name: "—", blurb: "" };
+  const lordInfo = PLANET_THEMES[d.tithi_lord];
+  const isSukla = d.paksha === "Sukla Paksha";
+  const pakshaBlurb = isSukla
+    ? "Sukla (waxing) carries <em>rising, outward</em> energy — classically favoured for starting new things, public work, and building. As the Moon grows, so does vitality and social momentum."
+    : "Krishna (waning) carries <em>receding, inward</em> energy — classically suited to finishing, releasing, cleansing, and introspective work. The closer to new moon, the more inward the tone.";
+  const lordLine = lordInfo
+    ? '<strong>' + escapeHtml(d.tithi_lord) + '</strong> governs <em>' + lordInfo.governs + '</em> ' +
+      '(' + lordInfo.benefic + '). Its themes — <em>' + lordInfo.themes + '</em> — colour the acts favoured during this tithi.'
+    : '<strong>' + escapeHtml(d.tithi_lord) + '</strong> rules this tithi.';
+
+  const progressPct = (d.tithi_progress * 100).toFixed(0);
+  const progressLine = progressPct < 20
+    ? 'The tithi has just begun (' + progressPct + '% through) — its flavour will dominate most of the coming 12° of Moon motion.'
+    : progressPct > 80
+      ? 'The tithi is almost over (' + progressPct + '% through) — the <em>next</em> tithi’s lord will soon take over, so time-sensitive work tied to this tithi should be wrapped up.'
+      : 'The tithi is near its middle (' + progressPct + '% through) — its quality is at full strength right now.';
+
+  // Muhurta caution from Ch 36 for the inauspicious tithis.
+  const cautionTithis = { 4: "Rikta", 9: "Rikta", 14: "Rikta / Chaturdasi", 19: "Rikta", 24: "Rikta", 29: "Rikta", 30: "Amavasya (new moon)" };
+  const caution = cautionTithis[d.tithi_number];
+  const cautionLine = caution
+    ? '<div class="mt-2 rounded bg-rose-50 border border-rose-200 text-rose-800 px-2 py-1.5 text-xs">' +
+      '⚠ Ch 36.3 flags this tithi (<strong>' + caution + '</strong>) as generally ' +
+      'unfavourable for auspicious beginnings — marriages, housewarmings, first steps of a long venture.</div>'
+    : '';
+
+  readingEl.innerHTML =
+    '<div class="text-indigo-800 font-semibold mb-1">What today’s tithi means — for this native</div>' +
+    '<p class="mb-1.5"><strong>Tithi ' + d.tithi_number + ' (' + escapeHtml(d.tithi_name) + ')</strong> falls in ' +
+      '<strong>' + d.paksha + '</strong>. ' + pakshaBlurb + '</p>' +
+    '<p class="mb-1.5"><strong>Classical quality:</strong> <em>' + q.name + '</em> — ' + q.blurb + '.</p>' +
+    '<p class="mb-1.5"><strong>Lord of the tithi:</strong> ' + lordLine + '</p>' +
+    '<p class="mb-1.5 text-slate-700">' + progressLine + '</p>' +
+    cautionLine;
+
+  citeEl.innerHTML =
+    'Sources — Ch 1.3.8 (Tithis &amp; Pakshas), Ch 1.3.8.1 (Tithi lords), Ch 3.2.3 (Planets &amp; what they govern), Ch 36.3 (Muhurta tithi quality — Nanda/Bhadra/Jaya/Rikta/Purna).';
 }
 
 function _tithiCell(t) {
