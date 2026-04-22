@@ -675,7 +675,10 @@
         </p>
         <div id="rasiExplorerGrid" class="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2 mb-4"></div>
         <div id="rasiExplorerWheel" class="grid md:grid-cols-2 gap-4 mb-4"></div>
-        <div id="rasiExplorerDossier" class="rounded border border-slate-200 bg-slate-50 p-4 text-sm"></div>
+        <div class="grid md:grid-cols-3 gap-4 mb-4">
+          <div id="rasiExplorerKaala" class="md:col-span-1 rounded border border-slate-200 bg-white p-3"></div>
+          <div id="rasiExplorerDossier" class="md:col-span-2 rounded border border-slate-200 bg-slate-50 p-4 text-sm"></div>
+        </div>
         <details class="mt-4 text-sm">
           <summary class="cursor-pointer text-slate-600 font-medium">About Rasi properties</summary>
           <div id="rasiExplorerAbout" class="text-sm text-slate-600 space-y-2 mt-2"></div>
@@ -1931,6 +1934,7 @@ async function loadRasiExplorer() {
 
   _renderRasiGrid(nativeMarks);
   _renderRasiWheels(nativeMarks);
+  _renderKaalaPurusha(nativeMarks);
   // Default selection: Lagna, else first sign
   const initial = nativeMarks.lagna || RASI_ORDER[0];
   _renderRasiDossier(initial, nativeMarks);
@@ -2125,6 +2129,80 @@ function _renderRasiWheels(marks) {
       '<div class="flex gap-3">'+legend(parSegs)+'</div>' +
     '</div>';
   host.appendChild(card3);
+}
+
+// Kaala Purusha body-map (Ch 2.2.1). Stylised SVG figure; each body part = one rasi.
+// Coords roughly approximate the figure so the rasi labels land near the matching limb.
+// [rasiName, cx, cy, labelX, labelY] — label positions are to the side of the body so text doesn't overlap.
+// Body shapes plus stable right-column label positions so they don't overlap.
+// labelY values are hand-picked on a 20..300 range (step ~25).
+const KAALA_BODY = [
+  { rasi: 'Aries',       shape: 'ellipse', cx: 110, cy:  32, rx: 18, ry: 20, labelX: 180, labelY:  20 },   // head
+  { rasi: 'Taurus',      shape: 'rect',    x: 100, y:  55, w:  20, h: 10,  labelX: 180, labelY:  45 },     // face / neck
+  { rasi: 'Gemini',      shape: 'rect',    x: 55,  y:  68, w: 110, h: 14,  labelX: 180, labelY:  70 },     // arms / shoulders
+  { rasi: 'Cancer',      shape: 'rect',    x: 88,  y:  90, w:  44, h: 22,  labelX: 180, labelY:  95 },     // heart/breast
+  { rasi: 'Leo',         shape: 'rect',    x: 88,  y: 116, w:  44, h: 22,  labelX: 180, labelY: 120 },     // stomach
+  { rasi: 'Virgo',       shape: 'rect',    x: 88,  y: 142, w:  44, h: 12,  labelX: 180, labelY: 145 },     // hip
+  { rasi: 'Libra',       shape: 'rect',    x: 92,  y: 158, w:  36, h:  8,  labelX: 180, labelY: 170 },     // below navel
+  { rasi: 'Scorpio',     shape: 'rect',    x: 94,  y: 170, w:  32, h: 10,  labelX: 180, labelY: 195 },     // private parts
+  { rasi: 'Sagittarius', shape: 'rect',    x: 88,  y: 184, w:  44, h: 36,  labelX: 180, labelY: 220 },     // thighs
+  { rasi: 'Capricorn',   shape: 'rect',    x: 88,  y: 224, w:  44, h: 12,  labelX: 180, labelY: 245 },     // knees
+  { rasi: 'Aquarius',    shape: 'rect',    x: 90,  y: 268, w:  40, h: 10,  labelX: 180, labelY: 270 },     // ankles
+  { rasi: 'Pisces',      shape: 'rect',    x: 86,  y: 282, w:  48, h: 10,  labelX: 180, labelY: 295 },     // feet
+];
+
+function _renderKaalaPurusha(marks) {
+  const host = document.getElementById('rasiExplorerKaala');
+  if (!host) return;
+  const svgNs = 'http://www.w3.org/2000/svg';
+
+  // Silhouette: head, neck, torso, legs, feet. Drawn behind the rasi regions.
+  const bodyOutline =
+    '<ellipse cx="110" cy="32" rx="22" ry="24" fill="#f1f5f9" stroke="#94a3b8" stroke-width="1"/>' +                             // head
+    '<path d="M 55 68 L 165 68 L 150 190 L 70 190 Z" fill="#f1f5f9" stroke="#94a3b8" stroke-width="1"/>' +                       // torso
+    '<rect x="74" y="190" width="28" height="90" fill="#f1f5f9" stroke="#94a3b8" stroke-width="1"/>' +                           // left leg
+    '<rect x="118" y="190" width="28" height="90" fill="#f1f5f9" stroke="#94a3b8" stroke-width="1"/>' +                          // right leg
+    '<ellipse cx="88" cy="286" rx="20" ry="8" fill="#e2e8f0" stroke="#94a3b8" stroke-width="1"/>' +                              // left foot
+    '<ellipse cx="132" cy="286" rx="20" ry="8" fill="#e2e8f0" stroke="#94a3b8" stroke-width="1"/>';                              // right foot
+
+  const regions = KAALA_BODY.map((b, idx) => {
+    const occupants = (marks.planets[b.rasi] || []).filter(p => CLASSICAL_GRAHAS.has(String(p).toLowerCase()));
+    const isLagna = marks.lagna === b.rasi;
+    const hasOccupant = occupants.length > 0 || isLagna;
+    const fillColor = isLagna ? 'rgba(251, 191, 36, 0.55)'
+      : hasOccupant ? 'rgba(99, 102, 241, 0.45)'
+      : 'rgba(100, 116, 139, 0.10)';
+    const stroke = hasOccupant ? '#4338ca' : '#94a3b8';
+    const tip = b.rasi + (occupants.length ? ' · ' + occupants.join(', ') : '') + (isLagna ? ' · Lagna' : '');
+    let shapeEl;
+    if (b.shape === 'ellipse') {
+      shapeEl = '<ellipse cx="'+b.cx+'" cy="'+b.cy+'" rx="'+b.rx+'" ry="'+b.ry+'" fill="'+fillColor+'" stroke="'+stroke+'" stroke-width="1.5"><title>'+tip+'</title></ellipse>';
+    } else {
+      shapeEl = '<rect x="'+b.x+'" y="'+b.y+'" width="'+b.w+'" height="'+b.h+'" fill="'+fillColor+'" stroke="'+stroke+'" stroke-width="1.5"><title>'+tip+'</title></rect>';
+    }
+    // Connector line from body region to label
+    const anchorX = b.shape === 'ellipse' ? b.cx + b.rx : b.x + b.w;
+    const anchorY = b.shape === 'ellipse' ? b.cy : b.y + b.h/2;
+    const conn = '<line x1="'+anchorX+'" y1="'+anchorY+'" x2="'+b.labelX+'" y2="'+b.labelY+'" stroke="#cbd5e1" stroke-width="0.5"/>';
+    // Label: glyph + rasi short + occupant badge
+    const badge = occupants.length
+      ? '<tspan font-weight="700" fill="#4338ca"> · '+occupants.length+'</tspan>'
+      : isLagna ? '<tspan font-weight="700" fill="#b45309"> · L</tspan>' : '';
+    const label = '<text x="'+b.labelX+'" y="'+b.labelY+'" font-size="10" fill="#475569" dominant-baseline="middle">' +
+      '<tspan font-size="12">'+RASI_GLYPH[b.rasi]+'</tspan> '+RASI_SHORT[b.rasi] + badge + '</text>';
+    return '<g data-rasi="'+b.rasi+'" class="kaala-region" style="cursor:pointer">'+conn+shapeEl+label+'</g>';
+  }).join('');
+
+  host.innerHTML =
+    '<div class="text-xs text-slate-500 mb-1 font-medium">Kāla Puruṣa — body-map <span class="text-slate-400">(Ch 2.2.1)</span></div>' +
+    '<svg viewBox="0 0 230 305" class="w-full" style="max-width:300px; display:block; margin:0 auto">' +
+      bodyOutline + regions +
+    '</svg>' +
+    '<div class="text-[11px] text-slate-500 mt-2">Indigo = limb holds one of your grahas · amber = Lagna limb · hover for occupants.</div>';
+
+  host.querySelectorAll('.kaala-region').forEach(g => {
+    g.addEventListener('click', () => _renderRasiDossier(g.dataset.rasi, marks));
+  });
 }
 
 function _renderRasiExplorerAbout() {
