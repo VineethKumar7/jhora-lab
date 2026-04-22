@@ -460,6 +460,64 @@ async def lunar_month_api(
     })
 
 
+# Tithi lord cycle (Ch 1.3.8 Table 3): 8 lords, repeating every 8 tithis.
+TITHI_LORDS_CYCLE = ["Sun", "Moon", "Mars", "Mercury", "Jupiter", "Venus", "Saturn", "Rahu"]
+
+
+@app.post("/api/tithi_view")
+async def tithi_view(
+    date: str = Form(...),
+    time: str = Form("12:00"),
+    latitude: float = Form(...),
+    longitude: float = Form(...),
+    timezone: float = Form(...),
+    ayanamsa: Optional[str] = Form(None),
+):
+    _apply_ayanamsa(ayanamsa)
+    place, jd, _, _ = _make_place_and_jd(date, time, latitude, longitude, timezone)
+    rasi = charts.rasi_chart(jd, place)
+    # rasi = [['L', (sign, deg)], [0, (sign, deg)], [1, (sign, deg)], ...]
+    sun_sign, sun_deg = rasi[1][1]
+    moon_sign, moon_deg = rasi[2][1]
+    sun_lon = sun_sign * 30.0 + sun_deg
+    moon_lon = moon_sign * 30.0 + moon_deg
+    diff = (moon_lon - sun_lon) % 360.0
+
+    tithi_num = int(diff // 12) + 1
+    if tithi_num > 30:
+        tithi_num = 30
+    tithi_progress = (diff - (tithi_num - 1) * 12.0) / 12.0  # 0..1 within current tithi
+    paksha = "Sukla Paksha" if tithi_num <= 15 else "Krishna Paksha"
+    paksha_index = tithi_num if tithi_num <= 15 else (tithi_num - 15)
+
+    tithi_name = utils.TITHI_LIST[tithi_num - 1] if tithi_num <= len(utils.TITHI_LIST) else str(tithi_num)
+    lord = TITHI_LORDS_CYCLE[(tithi_num - 1) % 8]
+
+    all_tithis = []
+    for i in range(1, 31):
+        nm = utils.TITHI_LIST[i - 1] if i <= len(utils.TITHI_LIST) else str(i)
+        all_tithis.append({
+            "number": i,
+            "name": nm,
+            "paksha": "Sukla" if i <= 15 else "Krishna",
+            "lord": TITHI_LORDS_CYCLE[(i - 1) % 8],
+            "is_current": i == tithi_num,
+        })
+
+    return JSONResponse({
+        "tithi_number": tithi_num,
+        "tithi_name": tithi_name,
+        "tithi_progress": round(tithi_progress, 4),
+        "tithi_lord": lord,
+        "paksha": paksha,
+        "paksha_day": paksha_index,
+        "sun_longitude": round(sun_lon, 4),
+        "moon_longitude": round(moon_lon, 4),
+        "moon_minus_sun": round(diff, 4),
+        "all_tithis": all_tithis,
+    })
+
+
 @app.post("/api/chart")
 async def chart(
     date: str = Form(...),
