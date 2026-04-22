@@ -190,6 +190,7 @@
         <button type="button" id="lookupButton"    data-panel="lookupOut"    class="tab-btn px-3 py-1.5 rounded text-sm font-medium text-slate-600 hover:bg-slate-100">Lookup</button>
         <button type="button" id="housesButton"    data-panel="housesOut"    class="tab-btn px-3 py-1.5 rounded text-sm font-medium text-slate-600 hover:bg-slate-100">Houses</button>
         <button type="button" id="horaButton"      data-panel="horaOut"      class="tab-btn px-3 py-1.5 rounded text-sm font-medium text-slate-600 hover:bg-slate-100">Hora</button>
+        <button type="button" id="maasaButton"     data-panel="maasaOut"     class="tab-btn px-3 py-1.5 rounded text-sm font-medium text-slate-600 hover:bg-slate-100">Maasa</button>
       </div>
       <div class="flex items-center gap-2 order-2 md:order-3">
         <label class="text-xs text-slate-500 hidden lg:inline" for="ayanamsaNav">Ayanamsa</label>
@@ -451,6 +452,32 @@
               <tr><th class="px-2 py-1 text-left">Hora</th><th class="px-2 py-1 text-left">Lord</th><th class="px-2 py-1 text-left">Hora</th><th class="px-2 py-1 text-left">Lord</th></tr>
             </thead>
             <tbody id="horaTable" class="divide-y divide-slate-100"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div id="maasaOut" class="hidden bg-white rounded-lg shadow p-5">
+        <div class="flex items-baseline justify-between border-b pb-2 mb-3 flex-wrap gap-2">
+          <h2 class="font-semibold text-slate-700">Lunar month (maasa)</h2>
+          <span id="maasaSubject" class="text-xs text-slate-500"></span>
+        </div>
+        <p class="text-xs text-slate-500 mb-3">
+          Ch 1.3.9 · A lunar month runs new-moon to new-moon. Its name comes from the rasi
+          in which Sun and Moon conjoin at the start, and reflects the constellation where
+          Moon is likely on full-moon day.
+        </p>
+        <div id="maasaSummary" class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4 text-sm"></div>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead class="bg-slate-50 text-slate-600 text-xs uppercase">
+              <tr>
+                <th class="px-2 py-1 text-left">#</th>
+                <th class="px-2 py-1 text-left">Month</th>
+                <th class="px-2 py-1 text-left">Conjunction rasi</th>
+                <th class="px-2 py-1 text-left">Full-moon nakshatra</th>
+              </tr>
+            </thead>
+            <tbody id="maasaTable" class="divide-y divide-slate-100"></tbody>
           </table>
         </div>
       </div>
@@ -1014,6 +1041,7 @@ const TABS = [
   { id: 'lookupButton',    panel: 'lookupOut',    loader: loadLookup },
   { id: 'housesButton',    panel: 'housesOut',    loader: loadHouses },
   { id: 'horaButton',      panel: 'horaOut',      loader: loadHora },
+  { id: 'maasaButton',     panel: 'maasaOut',     loader: loadMaasa },
 ];
 
 // ---------- Longitude Lookup (Ch 1) ----------
@@ -1141,6 +1169,29 @@ async function loadLookup() {
     });
   }
   if (input) input.focus();
+}
+
+async function loadMaasa() {
+  const fd = ensureForm(); if (!fd) return;
+  const r = await fetch('/api/lunar_month', { method:'POST', body: fd });
+  if (!r.ok) { showErr('Lunar month failed: '+r.status); return; }
+  const d = await r.json();
+  document.getElementById('maasaSubject').textContent = subjectLine(fd);
+  const summary = document.getElementById('maasaSummary');
+  summary.innerHTML = '' +
+    '<div class="bg-amber-50 border border-amber-200 rounded p-3"><div class="text-amber-700 text-xs">Lunar month</div><div class="font-semibold text-amber-900">'+escapeHtml(d.month_name)+(d.is_adhika?' <span class="text-xs">(Adhika)</span>':'')+'</div></div>' +
+    '<div class="bg-slate-50 rounded p-3"><div class="text-slate-500 text-xs">Opening Sun-Moon rasi</div><div class="font-semibold text-slate-800">'+escapeHtml(d.conjunction_rasi)+'</div></div>' +
+    '<div class="bg-slate-50 rounded p-3"><div class="text-slate-500 text-xs">Full-moon nakshatra</div><div class="font-semibold text-slate-800">'+escapeHtml(d.full_moon_nakshatra)+'</div></div>' +
+    '<div class="bg-slate-50 rounded p-3"><div class="text-slate-500 text-xs">Tithi</div><div class="font-semibold text-slate-800">'+escapeHtml(d.tithi_name)+' <span class="text-xs text-slate-500">('+escapeHtml(d.paksha)+')</span></div></div>';
+  const body = document.getElementById('maasaTable');
+  body.innerHTML = d.month_table.map(m =>
+    '<tr class="'+(m.is_current?'bg-amber-50 font-semibold text-amber-900':'')+'">' +
+    '<td class="px-2 py-1">'+m.number+'</td>' +
+    '<td class="px-2 py-1">'+escapeHtml(m.name)+'</td>' +
+    '<td class="px-2 py-1">'+escapeHtml(m.conjunction_rasi)+'</td>' +
+    '<td class="px-2 py-1">'+escapeHtml(m.full_moon_nakshatra)+'</td>' +
+    '</tr>'
+  ).join('');
 }
 
 async function loadHora() {

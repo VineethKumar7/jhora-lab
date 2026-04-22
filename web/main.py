@@ -400,6 +400,66 @@ async def hora_hour(
     })
 
 
+# Sanskrit lunar month names, indexed 1..12 (drik.lunar_month returns 1-based).
+# The name is decided by the rasi in which the month's opening Sun-Moon conjunction
+# falls (book Ch 1.3.9, Table 4). drik.lunar_month maps (this_solar_month+1)%12 + 1,
+# so month 1 = Chaitra ↔ conjunction in Pisces (solar_month=11).
+LUNAR_MONTH_NAMES = [
+    "Chaitra", "Vaisaakha", "Jyeshtha", "Aashaadha", "Sraavana", "Bhaadrapada",
+    "Aaswayuja", "Kaarteeka", "Maargasira", "Pushya", "Maagha", "Phaalguna",
+]
+LUNAR_MONTH_FULLMOON_NAK = [
+    "Chitra", "Visaakha", "Jyeshtha", "Poorva/Uttara Aashaadha", "Sravana",
+    "Poorva/Uttara Bhadrapada", "Aswini", "Krittika", "Mrigasira", "Pushyami",
+    "Makha", "Poorva/Uttara Phalguni",
+]
+LUNAR_MONTH_CONJ_RASI = [
+    "Pisces", "Aries", "Taurus", "Gemini", "Cancer", "Leo",
+    "Virgo", "Libra", "Scorpio", "Sagittarius", "Capricorn", "Aquarius",
+]
+
+
+@app.post("/api/lunar_month")
+async def lunar_month_api(
+    date: str = Form(...),
+    time: str = Form("12:00"),
+    latitude: float = Form(...),
+    longitude: float = Form(...),
+    timezone: float = Form(...),
+):
+    place, jd, _, _ = _make_place_and_jd(date, time, latitude, longitude, timezone)
+    lm = drik.lunar_month(jd, place)
+    month_num, is_adhika = lm[0], bool(lm[1])
+    idx = month_num - 1 if 1 <= month_num <= 12 else 0
+
+    tithi_info = drik.tithi(jd, place)
+    tithi_num = tithi_info[0]
+    tithi_name = utils.TITHI_LIST[tithi_num - 1] if tithi_num and tithi_num <= len(utils.TITHI_LIST) else str(tithi_num)
+    paksha_idx = 0 if tithi_num <= 15 else 1
+    paksha_name = utils.PAKSHA_LIST[paksha_idx]
+
+    return JSONResponse({
+        "month_number": month_num,
+        "month_name": LUNAR_MONTH_NAMES[idx],
+        "is_adhika": is_adhika,
+        "conjunction_rasi": LUNAR_MONTH_CONJ_RASI[idx],
+        "full_moon_nakshatra": LUNAR_MONTH_FULLMOON_NAK[idx],
+        "tithi_number": tithi_num,
+        "tithi_name": tithi_name,
+        "paksha": paksha_name,
+        "month_table": [
+            {
+                "number": i + 1,
+                "name": LUNAR_MONTH_NAMES[i],
+                "conjunction_rasi": LUNAR_MONTH_CONJ_RASI[i],
+                "full_moon_nakshatra": LUNAR_MONTH_FULLMOON_NAK[i],
+                "is_current": (i + 1) == month_num,
+            }
+            for i in range(12)
+        ],
+    })
+
+
 @app.post("/api/chart")
 async def chart(
     date: str = Form(...),
