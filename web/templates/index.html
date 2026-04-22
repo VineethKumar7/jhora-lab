@@ -511,6 +511,12 @@
             <tbody id="maasaTable" class="divide-y divide-slate-100"></tbody>
           </table>
         </div>
+        <details class="mt-5 border-t pt-3" open>
+          <summary class="font-semibold text-slate-700 cursor-pointer">About Lunar Months <span class="text-xs text-slate-400 font-normal">(from the book)</span></summary>
+          <div id="maasaAbout" class="text-sm text-slate-600 space-y-2 mt-2"></div>
+        </details>
+        <div id="maasaReading" class="mt-4 rounded border border-indigo-200 bg-indigo-50 p-4 text-sm"></div>
+        <div id="maasaCitations" class="mt-2 text-xs text-slate-500 italic"></div>
       </div>
 
       <div id="tithiOut" class="hidden bg-white rounded-lg shadow p-5">
@@ -1864,6 +1870,42 @@ async function loadMaasa() {
     '<td class="px-2 py-1">'+escapeHtml(m.full_moon_nakshatra)+'</td>' +
     '</tr>'
   ).join('');
+  _renderMaasaBook(d);
+}
+
+// Book-sourced explainer for the Lunar Month tab. Ch 1.3.8.2 defines the
+// naming rule; Ch 2 (rasi themes) colours the conjunction rasi; DEITY_HINTS
+// gives the full-moon nakshatra's inner mood.
+function _renderMaasaBook(d) {
+  const aboutEl = document.getElementById('maasaAbout');
+  const readingEl = document.getElementById('maasaReading');
+  const citeEl = document.getElementById('maasaCitations');
+  if (!aboutEl || !readingEl || !citeEl) return;
+
+  aboutEl.innerHTML =
+    '<p>A <strong>lunar month (maasa)</strong> is a new-moon to new-moon cycle. It is named after the rasi in which the <em>Sun and Moon conjoin</em> at its start — that same rasi also determines the nakshatra the Moon is likely to occupy on full-moon day, giving the month its second name (Ch 1.3.8.2).</p>' +
+    '<p>Twelve lunar months complete roughly one solar year: <em>Chaitra, Vaisakha, Jyeshtha, Ashadha, Sravana, Bhadrapada, Aswayuja, Karthika, Margasira, Pushya, Magha, Phalguna</em>. Because a synodic lunar month is ~29.5 days and a solar year is 365.25 days, the lunar year drifts — every 2–3 years an <em>Adhika maasa</em> (intercalary month) is added to re-align with the solar year.</p>' +
+    '<p>The name of your current lunar month tells you which rasi the Sun is transiting at its start, and therefore what the whole month’s emotional-intellectual mood is likely to carry.</p>';
+
+  const rasiInfo = RASI_INFO[d.conjunction_rasi];
+  const deityHint = DEITY_HINTS[d.full_moon_deity]; // backend may or may not supply; degrade gracefully
+
+  const monthLine = '<p><strong>Month:</strong> ' + escapeHtml(d.month_name) +
+    (d.is_adhika ? ' <span class="text-xs">(Adhika — intercalary)</span>' : '') + '.</p>';
+  const rasiLine = rasiInfo
+    ? '<p><strong>Conjunction rasi ' + escapeHtml(d.conjunction_rasi) + '</strong> (ruled by <strong>' + rasiInfo.ruler + '</strong>, ' + rasiInfo.element + ' · ' + rasiInfo.modality + '). ' +
+      'This month carries <em>' + rasiInfo.themes + '</em> (Ch 2.3). Cultural festivals tied to this month often echo these themes.</p>'
+    : '';
+  const nakLine = '<p><strong>Full-moon nakshatra:</strong> ' + escapeHtml(d.full_moon_nakshatra) +
+    (deityHint ? ' — ' + deityHint : '') +
+    '. On full-moon night the Moon sits here — classically the most emotionally-charged day of the month.</p>';
+
+  readingEl.innerHTML =
+    '<div class="text-indigo-800 font-semibold mb-1">What this lunar month means</div>' +
+    monthLine + rasiLine + nakLine;
+
+  citeEl.innerHTML =
+    'Sources — Ch 1.3.8.2 (Lunar month naming), Ch 2.2–2.3 (rasi properties &amp; indications), Ch 1 Table 2 (nakshatra deities).';
 }
 
 async function loadHora() {
