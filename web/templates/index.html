@@ -192,6 +192,7 @@
         <button type="button" id="horaButton"      data-panel="horaOut"      class="tab-btn px-3 py-1.5 rounded text-sm font-medium text-slate-600 hover:bg-slate-100">Hora</button>
         <button type="button" id="maasaButton"     data-panel="maasaOut"     class="tab-btn px-3 py-1.5 rounded text-sm font-medium text-slate-600 hover:bg-slate-100">Maasa</button>
         <button type="button" id="tithiButton"     data-panel="tithiOut"     class="tab-btn px-3 py-1.5 rounded text-sm font-medium text-slate-600 hover:bg-slate-100">Tithi</button>
+        <button type="button" id="yogaButton"      data-panel="yogaOut"      class="tab-btn px-3 py-1.5 rounded text-sm font-medium text-slate-600 hover:bg-slate-100">Yoga/Karana</button>
       </div>
       <div class="flex items-center gap-2 order-2 md:order-3">
         <label class="text-xs text-slate-500 hidden lg:inline" for="ayanamsaNav">Ayanamsa</label>
@@ -497,6 +498,41 @@
           <div id="tithiSummary" class="text-sm space-y-2"></div>
         </div>
         <div id="tithiStrip" class="mb-3"></div>
+      </div>
+
+      <div id="yogaOut" class="hidden bg-white rounded-lg shadow p-5">
+        <div class="flex items-baseline justify-between border-b pb-2 mb-3 flex-wrap gap-2">
+          <h2 class="font-semibold text-slate-700">Yoga &amp; Karana</h2>
+          <span id="yogaSubject" class="text-xs text-slate-500"></span>
+        </div>
+        <p class="text-xs text-slate-500 mb-3">
+          Ch 1.3.9–10 · Yoga = (Sun°+Moon°) / 800′ (27 total). Karana = half a tithi (11 canonical,
+          with 7 moving types that repeat through the month and 4 fixed at the boundaries).
+        </p>
+        <div class="grid md:grid-cols-2 gap-4 mb-4 text-sm">
+          <div id="yogaCurrent" class="bg-amber-50 border border-amber-200 rounded p-3"></div>
+          <div id="karanaCurrent" class="bg-amber-50 border border-amber-200 rounded p-3"></div>
+        </div>
+        <div class="grid md:grid-cols-2 gap-4">
+          <div>
+            <div class="text-xs text-slate-500 mb-1">All 27 yogas</div>
+            <div class="overflow-x-auto">
+              <table class="w-full text-xs">
+                <thead class="bg-slate-50 text-slate-600 uppercase"><tr><th class="px-2 py-1 text-left">#</th><th class="px-2 py-1 text-left">Yoga</th><th class="px-2 py-1 text-left">Meaning</th></tr></thead>
+                <tbody id="yogaTable" class="divide-y divide-slate-100"></tbody>
+              </table>
+            </div>
+          </div>
+          <div>
+            <div class="text-xs text-slate-500 mb-1">The 11 karanas</div>
+            <div class="overflow-x-auto">
+              <table class="w-full text-xs">
+                <thead class="bg-slate-50 text-slate-600 uppercase"><tr><th class="px-2 py-1 text-left">#</th><th class="px-2 py-1 text-left">Karana</th><th class="px-2 py-1 text-left">Nature</th></tr></thead>
+                <tbody id="karanaTable" class="divide-y divide-slate-100"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
       </div>
 
       <div id="errOut" class="hidden bg-red-50 border border-red-300 text-red-700 rounded p-3 text-sm"></div>
@@ -1060,6 +1096,7 @@ const TABS = [
   { id: 'horaButton',      panel: 'horaOut',      loader: loadHora },
   { id: 'maasaButton',     panel: 'maasaOut',     loader: loadMaasa },
   { id: 'tithiButton',     panel: 'tithiOut',     loader: loadTithi },
+  { id: 'yogaButton',      panel: 'yogaOut',      loader: loadYogaKarana },
 ];
 
 // ---------- Longitude Lookup (Ch 1) ----------
@@ -1187,6 +1224,34 @@ async function loadLookup() {
     });
   }
   if (input) input.focus();
+}
+
+async function loadYogaKarana() {
+  const fd = ensureForm(); if (!fd) return;
+  const r = await fetch('/api/yoga_karana', { method:'POST', body: fd });
+  if (!r.ok) { showErr('Yoga/Karana failed: '+r.status); return; }
+  const d = await r.json();
+  document.getElementById('yogaSubject').textContent = subjectLine(fd);
+  document.getElementById('yogaCurrent').innerHTML =
+    '<div class="text-amber-700 text-xs">Current yoga</div>' +
+    '<div class="font-semibold text-amber-900 text-lg">'+d.yoga.number+'. '+escapeHtml(d.yoga.name)+'</div>' +
+    '<div class="text-xs text-amber-700 mt-1">'+escapeHtml(d.yoga.meaning || '')+'</div>';
+  document.getElementById('karanaCurrent').innerHTML =
+    '<div class="text-amber-700 text-xs">Current karana · month slot '+d.karana.slot+'/60</div>' +
+    '<div class="font-semibold text-amber-900 text-lg">'+d.karana.canonical_number+'. '+escapeHtml(d.karana.name)+'</div>' +
+    '<div class="text-xs text-amber-700 mt-1">'+escapeHtml(d.karana.nature || '')+'</div>';
+  document.getElementById('yogaTable').innerHTML = d.yoga_table.map(y =>
+    '<tr class="'+(y.is_current?'bg-amber-50 font-semibold text-amber-900':'')+'">' +
+    '<td class="px-2 py-1">'+y.number+'</td>' +
+    '<td class="px-2 py-1">'+escapeHtml(y.name)+'</td>' +
+    '<td class="px-2 py-1 text-slate-500">'+escapeHtml(y.meaning)+'</td>' +
+    '</tr>').join('');
+  document.getElementById('karanaTable').innerHTML = d.karana_table.map(k =>
+    '<tr class="'+(k.is_current?'bg-amber-50 font-semibold text-amber-900':'')+'">' +
+    '<td class="px-2 py-1">'+k.number+'</td>' +
+    '<td class="px-2 py-1">'+escapeHtml(k.name)+'</td>' +
+    '<td class="px-2 py-1 text-slate-500">'+escapeHtml(k.nature)+'</td>' +
+    '</tr>').join('');
 }
 
 function _renderMoonPhase(svgEl, moonMinusSun) {

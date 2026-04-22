@@ -518,6 +518,97 @@ async def tithi_view(
     })
 
 
+# Yoga meanings (Ch 1.3.9 Table 5). YOGAM_LIST in utils has the (Sanskrit) names;
+# this map provides the plain-English meaning for the UI.
+YOGA_MEANINGS = [
+    "Door bolt/supporting pillar", "Love/affection", "Long-lived",
+    "Long life of spouse (good fortune)", "Splendid, bright", "Great danger",
+    "One with good deeds", "Firmness", "Shiva's weapon of destruction (pain)",
+    "Danger", "Growth", "Fixed, constant", "Great blow", "Cheerful",
+    "Diamond (strong)", "Accomplishment", "Great fall", "Chief/best",
+    "Obstacle/hindrance", "Lord Shiva (purity)", "Accomplished/ready",
+    "Possible", "Auspicious", "White, bright", "Creator (good knowledge and purity)",
+    "Ruler of gods", "A class of gods",
+]
+# 11 canonical karana names (Ch 1.3.10). Karanas 1..7 repeat 8× through the month;
+# karanas 8..11 each come once at month-end / new-moon.
+KARANA_NAMES = [
+    "Bava", "Balava", "Kaulava", "Taitula", "Garija", "Vanija", "Vishti (Bhadra)",
+    "Sakuna", "Chatushpada", "Naga", "Kimstughna",
+]
+KARANA_NATURES = {
+    "Bava": "mobile (chara) — good for movement",
+    "Balava": "stable (sthira) — good for stable work",
+    "Kaulava": "mixed — moderate",
+    "Taitula": "mixed — fair",
+    "Garija": "mixed — moderate",
+    "Vanija": "mixed — trade/commerce favoured",
+    "Vishti (Bhadra)": "fixed — avoid for auspicious starts",
+    "Sakuna": "fixed — medicinal/remedial work",
+    "Chatushpada": "fixed — cattle/quadruped work",
+    "Naga": "fixed — inauspicious for most starts",
+    "Kimstughna": "fixed — good only for specific rites",
+}
+
+
+@app.post("/api/yoga_karana")
+async def yoga_karana_api(
+    date: str = Form(...),
+    time: str = Form("12:00"),
+    latitude: float = Form(...),
+    longitude: float = Form(...),
+    timezone: float = Form(...),
+):
+    place, jd, _, _ = _make_place_and_jd(date, time, latitude, longitude, timezone)
+
+    yog = drik.yogam(jd, place)
+    yoga_num = yog[0]
+    yoga_name = utils.YOGAM_LIST[yoga_num - 1] if yoga_num and yoga_num <= len(utils.YOGAM_LIST) else str(yoga_num)
+    yoga_meaning = YOGA_MEANINGS[yoga_num - 1] if yoga_num and yoga_num <= len(YOGA_MEANINGS) else ""
+
+    kar = drik.karana(jd, place)
+    kar_slot = kar[0]  # 1..60 position within the lunar month
+    # Map 60-slot index to canonical 11-name index (per the book Ch 1.3.10 rule).
+    # Slot 1 = Kimstughna (2nd half of tithi 1).
+    # Slots 2..57 = 56 karanas that are the 7 moving karanas (Bava..Vishti) × 8 cycles.
+    # Slots 58, 59, 60 = Sakuna, Chatushpada, Naga (the 3 fixed karanas at month end).
+    # Actually canonical: slot 1 = Kimstughna, slots 2..57 alternate through Bava..Vishti,
+    # slots 58..60 = Sakuna, Chatushpada, Naga.
+    if kar_slot == 1:
+        kar_canonical = "Kimstughna"
+        kar_canon_idx = 11
+    elif 2 <= kar_slot <= 57:
+        mov_idx = (kar_slot - 2) % 7  # 0..6
+        kar_canonical = KARANA_NAMES[mov_idx]
+        kar_canon_idx = mov_idx + 1
+    elif kar_slot == 58:
+        kar_canonical = "Sakuna";       kar_canon_idx = 8
+    elif kar_slot == 59:
+        kar_canonical = "Chatushpada";  kar_canon_idx = 9
+    else:
+        kar_canonical = "Naga";         kar_canon_idx = 10
+
+    yoga_table = [
+        {"number": i + 1, "name": utils.YOGAM_LIST[i] if i < len(utils.YOGAM_LIST) else str(i + 1),
+         "meaning": YOGA_MEANINGS[i] if i < len(YOGA_MEANINGS) else "",
+         "is_current": (i + 1) == yoga_num}
+        for i in range(27)
+    ]
+    karana_table = [
+        {"number": i + 1, "name": KARANA_NAMES[i], "nature": KARANA_NATURES[KARANA_NAMES[i]],
+         "is_current": (i + 1) == kar_canon_idx}
+        for i in range(11)
+    ]
+
+    return JSONResponse({
+        "yoga": {"number": yoga_num, "name": yoga_name, "meaning": yoga_meaning},
+        "karana": {"slot": kar_slot, "canonical_number": kar_canon_idx,
+                   "name": kar_canonical, "nature": KARANA_NATURES.get(kar_canonical, "")},
+        "yoga_table": yoga_table,
+        "karana_table": karana_table,
+    })
+
+
 @app.post("/api/chart")
 async def chart(
     date: str = Form(...),
